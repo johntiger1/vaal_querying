@@ -23,16 +23,28 @@ def cifar_transformer():
         ])
 
 def main(args):
-    if args.dataset == 'cifar10':
+    if args.dataset == 'mnist':
+        test_dataloader = data.DataLoader(
+                datasets.MNIST(args.data_path, download=True, transform=mnist_transformer(), train=False),
+            batch_size=args.batch_size, drop_last=False)
+
+        train_dataset = MNIST(args.data_path)
+        print(len(train_dataset))
+        args.num_images = 60000
+        args.budget = 300
+        args.initial_budget = 300
+        args.num_classes = 10
+
+    elif args.dataset == 'cifar10':
         test_dataloader = data.DataLoader(
                 datasets.CIFAR10(args.data_path, download=True, transform=cifar_transformer(), train=False),
             batch_size=args.batch_size, drop_last=False)
 
         train_dataset = CIFAR10(args.data_path)
 
-        args.num_images = 50000
-        args.budget = 2500
-        args.initial_budget = 5000
+        args.num_images = 5000
+        args.budget = 250
+        args.initial_budget = 500
         args.num_classes = 10
     elif args.dataset == 'cifar100':
         test_dataloader = data.DataLoader(
@@ -59,6 +71,8 @@ def main(args):
         args.num_classes = 1000
     else:
         raise NotImplementedError
+
+    random.seed("csc2547")
 
     all_indices = set(np.arange(args.num_images))
     initial_indices = random.sample(all_indices, args.initial_budget)
