@@ -30,7 +30,7 @@ def main(args):
 
         train_dataset = MNIST(args.data_path)
         print(len(train_dataset))
-        args.num_images = 60000
+        args.num_images = 6000
         args.budget = 300
         args.initial_budget = 300
         args.num_classes = 10
