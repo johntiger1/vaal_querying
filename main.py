@@ -30,7 +30,7 @@ def main(args):
 
         train_dataset = MNIST(args.data_path)
         print(len(train_dataset))
-        args.num_images = 60000
+        args.num_images = 6000
         args.budget = 300
         args.initial_budget = 300
         args.num_classes = 10
@@ -95,7 +95,10 @@ def main(args):
         # need to retrain all the models on the new images
         # re initialize and retrain the models
         task_model = vgg.vgg16_bn(num_classes=args.num_classes)
-        vae = model.VAE(args.latent_dim)
+        if args.dataset == "mnist":
+            vae = model.VAE(args.latent_dim, nc=1)
+        else:
+            vae = model.VAE(args.latent_dim)
         discriminator = model.Discriminator(args.latent_dim)
 
         unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)

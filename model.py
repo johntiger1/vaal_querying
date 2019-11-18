@@ -15,41 +15,79 @@ class View(nn.Module):
 
 class VAE(nn.Module):
     """Encoder-Decoder architecture for both WAE-MMD and WAE-GAN."""
-    def __init__(self, z_dim=32, nc=3):
+    #def __init__(self, z_dim=32, nc=3):
+    #    super(VAE, self).__init__()
+    #    self.z_dim = z_dim
+    #    self.nc = nc
+    #    self.encoder = nn.Sequential(
+    #        nn.Conv2d(nc, 128, 4, 2, 1, bias=False),              # B,  128, 32, 32
+    #        nn.BatchNorm2d(128),
+    #        nn.ReLU(True),
+    #        nn.Conv2d(128, 256, 4, 2, 1, bias=False),             # B,  256, 16, 16
+    #        nn.BatchNorm2d(256),
+    #        nn.ReLU(True),
+    #        nn.Conv2d(256, 512, 4, 2, 1, bias=False),             # B,  512,  8,  8
+    #        nn.BatchNorm2d(512),
+    #        nn.ReLU(True),
+    #        nn.Conv2d(512, 1024, 4, 2, 1, bias=False),            # B, 1024,  4,  4
+    #        nn.BatchNorm2d(1024),
+    #        nn.ReLU(True),
+    #        View((-1, 1024*2*2)),                                 # B, 1024*4*4
+    #    )
+
+    #    self.fc_mu = nn.Linear(1024*2*2, z_dim)                            # B, z_dim
+    #    self.fc_logvar = nn.Linear(1024*2*2, z_dim)                            # B, z_dim
+    #    self.decoder = nn.Sequential(
+    #        nn.Linear(z_dim, 1024*4*4),                           # B, 1024*8*8
+    #        View((-1, 1024, 4, 4)),                               # B, 1024,  8,  8
+    #        nn.ConvTranspose2d(1024, 512, 4, 2, 1, bias=False),   # B,  512, 16, 16
+    #        nn.BatchNorm2d(512),
+    #        nn.ReLU(True),
+    #        nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),    # B,  256, 32, 32
+    #        nn.BatchNorm2d(256),
+    #        nn.ReLU(True),
+    #        nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),    # B,  128, 64, 64
+    #        nn.BatchNorm2d(128),
+    #        nn.ReLU(True),
+    #        nn.ConvTranspose2d(128, nc, 1),                       # B,   nc, 64, 64
+    #    )
+    #    self.weight_init()
+
+    def __init__(self, z_dim=32, nc=1):
         super(VAE, self).__init__()
         self.z_dim = z_dim
         self.nc = nc
         self.encoder = nn.Sequential(
-            nn.Conv2d(nc, 128, 4, 2, 1, bias=False),              # B,  128, 32, 32
-            nn.BatchNorm2d(128),
+            nn.Conv2d(nc, 8, 3, 2, 1, bias=False),              # B,  8, 14, 14
+            nn.BatchNorm2d(8),
             nn.ReLU(True),
-            nn.Conv2d(128, 256, 4, 2, 1, bias=False),             # B,  256, 16, 16
-            nn.BatchNorm2d(256),
+            nn.Conv2d(8, 16, 3, 2, 1, bias=False),             # B,  16, 7, 7
+            nn.BatchNorm2d(16),
             nn.ReLU(True),
-            nn.Conv2d(256, 512, 4, 2, 1, bias=False),             # B,  512,  8,  8
-            nn.BatchNorm2d(512),
+            nn.Conv2d(16, 32, 3, 2, 1, bias=False),             # B,  32,  4,  4
+            nn.BatchNorm2d(32),
             nn.ReLU(True),
-            nn.Conv2d(512, 1024, 4, 2, 1, bias=False),            # B, 1024,  4,  4
-            nn.BatchNorm2d(1024),
+            nn.Conv2d(32, 64, 3, 2, 1, bias=False),            # B, 64,  2, 2
+            nn.BatchNorm2d(64),
             nn.ReLU(True),
-            View((-1, 1024*2*2)),                                 # B, 1024*4*4
+            View((-1, 64*2*2)),                                 # B, 16*7*7
         )
 
-        self.fc_mu = nn.Linear(1024*2*2, z_dim)                            # B, z_dim
-        self.fc_logvar = nn.Linear(1024*2*2, z_dim)                            # B, z_dim
+        self.fc_mu = nn.Linear(64*2*2, z_dim)                            # B, z_dim
+        self.fc_logvar = nn.Linear(64*2*2, z_dim)                            # B, z_dim
         self.decoder = nn.Sequential(
-            nn.Linear(z_dim, 1024*4*4),                           # B, 1024*8*8
-            View((-1, 1024, 4, 4)),                               # B, 1024,  8,  8
-            nn.ConvTranspose2d(1024, 512, 4, 2, 1, bias=False),   # B,  512, 16, 16
-            nn.BatchNorm2d(512),
+            nn.Linear(z_dim, 64*4*4),                           # B, 64*4*4
+            View((-1, 64, 4, 4)),                               # B, 64, 4, 4
+            nn.ConvTranspose2d(64, 32, 3, 2, 1, bias=False),   # B,  32, 7, 7
+            nn.BatchNorm2d(32),
             nn.ReLU(True),
-            nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),    # B,  256, 32, 32
-            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(32, 16, 4, 2, 1, bias=False),    # B,  16, 14, 14
+            nn.BatchNorm2d(16),
             nn.ReLU(True),
-            nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),    # B,  128, 64, 64
-            nn.BatchNorm2d(128),
+            nn.ConvTranspose2d(16, 8, 4, 2, 1, bias=False),    # B,  8, 28, 28
+            nn.BatchNorm2d(8),
             nn.ReLU(True),
-            nn.ConvTranspose2d(128, nc, 1),                       # B,   nc, 64, 64
+            nn.ConvTranspose2d(8, nc, 1),                       # B, 1, 28, 28
         )
         self.weight_init()
 
@@ -86,22 +124,42 @@ class VAE(nn.Module):
 
 class Discriminator(nn.Module):
     """Adversary architecture(Discriminator) for WAE-GAN."""
-    def __init__(self, z_dim=10):
+    #def __init__(self, z_dim=10):
+    #    super(Discriminator, self).__init__()
+    #    self.z_dim = z_dim
+    #    self.net = nn.Sequential(
+    #        nn.Linear(z_dim, 512),
+    #        nn.ReLU(True),
+    #        nn.Linear(512, 512),
+    #        nn.ReLU(True),
+    #        nn.Linear(512, 512),
+    #        nn.ReLU(True),
+    #        nn.Linear(512, 512),
+    #        nn.ReLU(True),
+    #        nn.Linear(512, 11),
+    #        nn.Softmax()
+    #    )
+    #    self.weight_init()
+
+
+    """Adversary architecture(Discriminator) for WAE-GAN."""
+    def __init__(self, z_dim=8):
         super(Discriminator, self).__init__()
         self.z_dim = z_dim
         self.net = nn.Sequential(
-            nn.Linear(z_dim, 512),
+            nn.Linear(z_dim, 128),
             nn.ReLU(True),
-            nn.Linear(512, 512),
+            nn.Linear(128, 128),
             nn.ReLU(True),
-            nn.Linear(512, 512),
+            nn.Linear(128, 128),
             nn.ReLU(True),
-            nn.Linear(512, 512),
+            nn.Linear(128, 128),
             nn.ReLU(True),
-            nn.Linear(512, 1),
+            nn.Linear(128, 1),
             nn.Sigmoid()
         )
         self.weight_init()
+
 
     def weight_init(self):
         for block in self._modules:
