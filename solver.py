@@ -8,6 +8,7 @@ from sklearn.metrics import accuracy_score
 
 import sampler
 
+from tqdm import tqdm
 
 
 
@@ -54,7 +55,7 @@ class Solver:
         
         change_lr_iter = self.args.train_iterations // 25
 
-        for iter_count in range(self.args.train_iterations):
+        for iter_count in tqdm(range(self.args.train_iterations)):
             if iter_count is not 0 and iter_count % change_lr_iter == 0:
                 for param in optim_vae.param_groups:
                     param['lr'] = param['lr'] * 0.9
@@ -89,17 +90,30 @@ class Solver:
                         unlab_recon, unlab_mu, unlab_logvar, self.args.beta)
             
                 labeled_preds = discriminator(mu)
-                unlabeled_preds = discriminator(unlab_mu)
+                # labeled_preds = labeled_out.max(1)[1]
                 
-                lab_real_preds = torch.ones(labeled_imgs.size(0))
-                unlab_real_preds = torch.ones(unlabeled_imgs.size(0))
+                unlabeled_preds = discriminator(unlab_mu)
+                # unlabeled_preds = unlabeled_out.max(1)[1]
+                
+                lab_real_preds = torch.zeros(labeled_imgs.size(0)).long()
+                unlab_real_preds = torch.zeros(unlabeled_imgs.size(0)).long()
                     
                 if self.args.cuda:
                     lab_real_preds = lab_real_preds.cuda()
                     unlab_real_preds = unlab_real_preds.cuda()
 
-                dsc_loss = self.bce_loss(labeled_preds, lab_real_preds) + \
-                        self.bce_loss(unlabeled_preds, unlab_real_preds)
+                # print("VAE SIZES")
+                # print(labeled_preds.size())
+                # print(unlabeled_preds.size())
+                # print(lab_real_preds.size())
+                # print(unlab_real_preds.size())
+                # print(labeled_preds)
+                # print(unlabeled_preds)
+                # print(lab_real_preds)
+                # print(unlab_real_preds)
+
+                dsc_loss = self.ce_loss(labeled_preds, lab_real_preds) + \
+                        self.ce_loss(unlabeled_preds, unlab_real_preds)
                 total_vae_loss = unsup_loss + transductive_loss + self.args.adversary_param * dsc_loss
                 optim_vae.zero_grad()
                 total_vae_loss.backward()
@@ -122,17 +136,19 @@ class Solver:
                     _, _, unlab_mu, _ = vae(unlabeled_imgs)
                 
                 labeled_preds = discriminator(mu)
+                # labeled_preds = labeled_out.max(1)[1]
                 unlabeled_preds = discriminator(unlab_mu)
+                # unlabeled_preds = unlabeled_out.max(1)[1]
                 
-                lab_real_preds = torch.ones(labeled_imgs.size(0))
-                unlab_fake_preds = torch.zeros(unlabeled_imgs.size(0))
+                lab_real_preds = labels
+                unlab_fake_preds = torch.zeros(unlabeled_imgs.size(0)).long()
 
                 if self.args.cuda:
                     lab_real_preds = lab_real_preds.cuda()
                     unlab_fake_preds = unlab_fake_preds.cuda()
                 
-                dsc_loss = self.bce_loss(labeled_preds, lab_real_preds) + \
-                        self.bce_loss(unlabeled_preds, unlab_fake_preds)
+                dsc_loss = self.ce_loss(labeled_preds, lab_real_preds) + \
+                        self.ce_loss(unlabeled_preds, unlab_fake_preds)
 
                 optim_discriminator.zero_grad()
                 dsc_loss.backward()
@@ -150,7 +166,7 @@ class Solver:
 
                 
 
-            if iter_count % 1000 == 0:
+            if iter_count % 100 == 0:
                 print('Current training iteration: {}'.format(iter_count))
                 print('Current task model loss: {:.4f}'.format(task_loss.item()))
                 print('Current vae model loss: {:.4f}'.format(total_vae_loss.item()))
@@ -186,6 +202,9 @@ class Solver:
 
 
     def vae_loss(self, x, recon, mu, logvar, beta):
+        print("$$$$$$$$$$")
+        print(recon.size())
+        print(x.size())
         MSE = self.mse_loss(recon, x)
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         KLD = KLD * beta

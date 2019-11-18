@@ -98,8 +98,8 @@ class Discriminator(nn.Module):
             nn.ReLU(True),
             nn.Linear(512, 512),
             nn.ReLU(True),
-            nn.Linear(512, 1),
-            nn.Sigmoid()
+            nn.Linear(512, 11),
+            nn.Softmax()
         )
         self.weight_init()
 

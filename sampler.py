@@ -17,7 +17,8 @@ class AdversarySampler:
 
             with torch.no_grad():
                 _, _, mu, _ = vae(images)
-                preds = discriminator(mu)
+                discrim_out = discriminator(mu)
+                preds = discrim_out[0] #look at only the probability of the class zero
 
             preds = preds.cpu().data
             all_preds.extend(preds)
@@ -26,7 +27,7 @@ class AdversarySampler:
         all_preds = torch.stack(all_preds)
         all_preds = all_preds.view(-1)
         # need to multiply by -1 to be able to use torch.topk 
-        all_preds *= -1
+        # all_preds *= -1
 
         # select the points which the discriminator things are the most likely to be unlabeled
         _, querry_indices = torch.topk(all_preds, int(self.budget))

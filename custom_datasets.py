@@ -20,6 +20,31 @@ def cifar10_transformer():
            torchvision.transforms.ToTensor(),
        ])
 
+def mnist_transformer():
+    return torchvision.transforms.Compose([
+        # torchvision.transforms.RandomHorizontalFlip(),
+        torchvision.transforms.ToTensor()
+    ])
+
+class MNIST(Dataset):
+    def __init__(self, path):
+        self.mnist = datasets.MNIST(root=path,
+                                        download=True,
+                                        train=True,
+                                        transform=mnist_transformer())
+
+    def __getitem__(self, index):
+        if isinstance(index, numpy.float64):
+            index = index.astype(numpy.int64)
+
+        data, target = self.mnist[index]
+
+        return data, target, index
+
+    def __len__(self):
+        return len(self.mnist)
+
+
 class CIFAR10(Dataset):
     def __init__(self, path):
         self.cifar10 = datasets.CIFAR10(root=path,
