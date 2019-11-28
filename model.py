@@ -58,36 +58,29 @@ class VAE(nn.Module):
         self.z_dim = z_dim
         self.nc = nc
         self.encoder = nn.Sequential(
-            nn.Conv2d(nc, 8, 3, 2, 1, bias=False),              # B,  8, 14, 14
-            nn.BatchNorm2d(8),
+            nn.Linear(nc, 4),              
             nn.ReLU(True),
-            nn.Conv2d(8, 16, 3, 2, 1, bias=False),             # B,  16, 7, 7
-            nn.BatchNorm2d(16),
+            nn.Linear(4, 8),              
             nn.ReLU(True),
-            nn.Conv2d(16, 32, 3, 2, 1, bias=False),             # B,  32,  4,  4
-            nn.BatchNorm2d(32),
+            nn.Linear(8, 16),              
             nn.ReLU(True),
-            nn.Conv2d(32, 64, 3, 2, 1, bias=False),            # B, 64,  2, 2
-            nn.BatchNorm2d(64),
+            nn.Linear(16, 32),              
             nn.ReLU(True),
-            View((-1, 64*2*2)),                                 # B, 16*7*7
+            nn.Linear(32, 64),  
         )
 
-        self.fc_mu = nn.Linear(64*2*2, z_dim)                            # B, z_dim
-        self.fc_logvar = nn.Linear(64*2*2, z_dim)                            # B, z_dim
+        self.fc_mu = nn.Linear(64, z_dim)
+        self.fc_logvar = nn.Linear(64, z_dim)
         self.decoder = nn.Sequential(
-            nn.Linear(z_dim, 64*4*4),                           # B, 64*4*4
-            View((-1, 64, 4, 4)),                               # B, 64, 4, 4
-            nn.ConvTranspose2d(64, 32, 3, 2, 1, bias=False),   # B,  32, 7, 7
-            nn.BatchNorm2d(32),
+            nn.Linear(z_dim, 32),              
             nn.ReLU(True),
-            nn.ConvTranspose2d(32, 16, 4, 2, 1, bias=False),    # B,  16, 14, 14
-            nn.BatchNorm2d(16),
+            nn.Linear(32, 16),              
             nn.ReLU(True),
-            nn.ConvTranspose2d(16, 8, 4, 2, 1, bias=False),    # B,  8, 28, 28
-            nn.BatchNorm2d(8),
+            nn.Linear(16, 8),              
             nn.ReLU(True),
-            nn.ConvTranspose2d(8, nc, 1),                       # B, 1, 28, 28
+            nn.Linear(8, 4),              
+            nn.ReLU(True),
+            nn.Linear(4, 2)
         )
         self.weight_init()
 
@@ -147,16 +140,16 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.z_dim = z_dim
         self.net = nn.Sequential(
-            nn.Linear(z_dim, 128),
+            nn.Linear(z_dim, 32),
             nn.ReLU(True),
-            nn.Linear(128, 128),
+            nn.Linear(32, 32),
+            # nn.ReLU(True),
+            # nn.Linear(128, 128),
+            # nn.ReLU(True),
+            # nn.Linear(128, 128),
             nn.ReLU(True),
-            nn.Linear(128, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 11),
-            nn.Softmax()
+            nn.Linear(32, 5),
+            nn.Sigmoid()
         )
         self.weight_init()
 
@@ -166,6 +159,34 @@ class Discriminator(nn.Module):
             for m in self._modules[block]:
                 kaiming_init(m)
 
+    def forward(self, z):
+        return self.net(z)
+
+
+class FCNet(nn.Module):
+    def __init__(self, num_classes=5, input_dim=2):
+        super(FCNet, self).__init__()
+        self.input_dim = input_dim
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, 32),
+            nn.ReLU(True),
+            nn.Linear(32, 32),
+            nn.ReLU(True),
+            nn.Linear(32, 32),
+            nn.ReLU(True),
+            nn.Linear(32, 32),
+            nn.ReLU(True),
+            nn.Linear(32, num_classes),
+            nn.Softmax()
+        )
+        self.weight_init()
+
+
+    def weight_init(self):
+        for block in self._modules:
+            for m in self._modules[block]:
+                kaiming_init(m)
+    
     def forward(self, z):
         return self.net(z)
 
@@ -190,3 +211,4 @@ def normal_init(m, mean, std):
         m.weight.data.fill_(1)
         if m.bias.data is not None:
             m.bias.data.zero_()
+

@@ -23,7 +23,21 @@ def cifar_transformer():
         ])
 
 def main(args):
-    if args.dataset == 'mnist':
+    if args.dataset == "ring":
+        print("Using Ring dataset...")
+        test_dataloader = data.DataLoader(
+            Ring(args.data_path, transform=simple_data_transformer(), return_idx=False, testset=True),
+            batch_size=args.batch_size, drop_last=False
+        )
+
+        train_dataset = Ring(args.data_path, simple_data_transformer())
+        print(len(train_dataset))
+        args.num_images = 2500
+        args.budget = 16
+        args.initial_budget = 16
+        args.num_classes = 5 
+    
+    elif args.dataset == 'mnist':
         test_dataloader = data.DataLoader(
                 datasets.MNIST(args.data_path, download=True, transform=mnist_transformer(), train=False),
             batch_size=args.batch_size, drop_last=False)
@@ -85,39 +99,56 @@ def main(args):
     args.cuda = args.cuda and torch.cuda.is_available()
     solver = Solver(args, test_dataloader)
 
-    splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    # splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    splits = [args.initial_budget/float(args.num_images), 
+        (args.initial_budget+args.budget)/float(args.num_images), 
+        (args.initial_budget+args.budget*2)/float(args.num_images), 
+        (args.initial_budget+args.budget*3)/float(args.num_images), 
+        (args.initial_budget+args.budget*4)/float(args.num_images), 
+        (args.initial_budget+args.budget*5)/float(args.num_images), ]
 
     current_indices = list(initial_indices)
-
     accuracies = []
     
     for split in splits:
         # need to retrain all the models on the new images
         # re initialize and retrain the models
-        task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+        # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+        task_model = model.FCNet(num_classes=args.num_classes)
         if args.dataset == "mnist":
             vae = model.VAE(args.latent_dim, nc=1)
+        elif args.dataset == "ring":
+            vae = model.VAE(args.latent_dim, nc=2)
         else:
             vae = model.VAE(args.latent_dim)
         discriminator = model.Discriminator(args.latent_dim)
+
 
         unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
         unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
         unlabeled_dataloader = data.DataLoader(train_dataset, 
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
-        # train the models on the current data
-        acc, vae, discriminator = solver.train(querry_dataloader,
-                                               task_model, 
-                                               vae, 
-                                               discriminator,
-                                               unlabeled_dataloader)
+        if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
+            # train the models on the current data
+            acc, vae, discriminator = solver.train(querry_dataloader,
+                                                task_model, 
+                                                vae, 
+                                                discriminator,
+                                                unlabeled_dataloader)
+        else:
+            # train the models on the current data
+            acc, vae, discriminator = solver.train_without_adv_vae(querry_dataloader,
+                                                task_model, 
+                                                vae, 
+                                                discriminator,
+                                                unlabeled_dataloader)
 
 
         print('Final accuracy with {}% of data is: {:.2f}'.format(int(split*100), acc))
         accuracies.append(acc)
 
-        sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader)
+        sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
         current_indices = list(current_indices) + list(sampled_indices)
         sampler = data.sampler.SubsetRandomSampler(current_indices)
         querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
