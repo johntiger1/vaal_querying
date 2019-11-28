@@ -9,17 +9,17 @@ Samarth Sinha*, Sayna Ebrahimi*, Trevor Darrell, Internation Conference on Compu
 ## Note temporary added by Eric
 To run the code using different sampling methods using the 2d dataset (i.e. ring dataset), run the following commmands:
 
-###Random Sampling
+### Random Sampling
 ```
 python main.py --dataset ring --cuda --train_iterations 800 --batch_size 16 --sampling_method random
 ```
 
-###Uncertainty Sampling
+### Uncertainty Sampling
 ```
 python main.py --dataset ring --cuda --train_iterations 800 --batch_size 16 --sampling_method uncertainty
 ```
 
-###Adversarial VAE
+### Adversarial VAE
 ```
 python main.py --dataset ring --cuda --train_iterations 800 --batch_size 16 --sampling_method adversary
 ```
