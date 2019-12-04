@@ -93,7 +93,7 @@ def main(args):
     sampler = data.sampler.SubsetRandomSampler(initial_indices)
 
     # dataset with labels available
-    query_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+    train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
             batch_size=args.batch_size, drop_last=True)
             
     args.cuda = args.cuda and torch.cuda.is_available()
@@ -131,14 +131,14 @@ def main(args):
 
         if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
             # train the models on the current data
-            acc, vae, discriminator = solver.train(query_dataloader,
+            acc, vae, discriminator = solver.train(train_dataloader,
                                                 task_model, 
                                                 vae, 
                                                 discriminator,
                                                 unlabeled_dataloader)
         else:
             # train the models on the current data
-            acc, vae, discriminator = solver.train_without_adv_vae(query_dataloader,
+            acc, vae, discriminator = solver.train_without_adv_vae(train_dataloader,
                                                 task_model, 
                                                 vae, 
                                                 discriminator,
@@ -149,12 +149,59 @@ def main(args):
         accuracies.append(acc)
 
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
+
+        # unlabeled_dataloader.dataset[sampled_indices]
+
+        query_analysis(sampled_indices, unlabeled_dataloader, args, split)
+
+
         current_indices = list(current_indices) + list(sampled_indices)
         sampler = data.sampler.SubsetRandomSampler(current_indices)
-        query_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+        train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=True)
 
     torch.save(accuracies, os.path.join(args.out_path, args.log_name))
+
+def query_analysis(queried_indices, unlabeled_dataloader, args, split):
+
+    # args.num_classes
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+
+
+    # we just want the class label of all these
+    labels = []
+
+    import collections
+
+    for x in queried_indices:
+        print(unlabeled_dataloader.dataset[x])  # (X, class label, index)
+        labels.append(int(unlabeled_dataloader.dataset[x][1]))
+    bar_freqs = collections.Counter(labels)
+    # get the elements of the list, according to these indices we give you
+
+    print(sorted(bar_freqs.items())) # by value
+
+
+
+    # we can sort the bar freqs too
+    # does keys() correspond to values()? it might!
+
+    # ax.hist(labels, bins=[i for i in range(5)])
+
+    ax.bar(list(bar_freqs.keys()), list(bar_freqs.values()), align='center')
+    ax.set_xticks(list(bar_freqs.keys()))
+
+    # ax.bar(bar_freqs)
+    # let's use a python counter
+
+    ax.set_xlabel("class")
+    ax.set_ylabel("count")
+    ax.set_title("Histogram of query")
+
+    fig.show()
+    fig.savefig("query_hist_{}.png".format(split))
+
 
 if __name__ == '__main__':
     args = arguments.get_args()
