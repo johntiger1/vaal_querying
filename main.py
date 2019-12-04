@@ -93,7 +93,7 @@ def main(args):
     sampler = data.sampler.SubsetRandomSampler(initial_indices)
 
     # dataset with labels available
-    querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
+    query_dataloader = data.DataLoader(train_dataset, sampler=sampler,
             batch_size=args.batch_size, drop_last=True)
             
     args.cuda = args.cuda and torch.cuda.is_available()
@@ -131,14 +131,14 @@ def main(args):
 
         if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
             # train the models on the current data
-            acc, vae, discriminator = solver.train(querry_dataloader,
+            acc, vae, discriminator = solver.train(query_dataloader,
                                                 task_model, 
                                                 vae, 
                                                 discriminator,
                                                 unlabeled_dataloader)
         else:
             # train the models on the current data
-            acc, vae, discriminator = solver.train_without_adv_vae(querry_dataloader,
+            acc, vae, discriminator = solver.train_without_adv_vae(query_dataloader,
                                                 task_model, 
                                                 vae, 
                                                 discriminator,
@@ -151,7 +151,7 @@ def main(args):
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
         current_indices = list(current_indices) + list(sampled_indices)
         sampler = data.sampler.SubsetRandomSampler(current_indices)
-        querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
+        query_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=True)
 
     torch.save(accuracies, os.path.join(args.out_path, args.log_name))
