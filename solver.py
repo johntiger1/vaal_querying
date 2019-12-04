@@ -220,18 +220,30 @@ class Solver:
 
     def sample_for_labeling(self, vae, discriminator, unlabeled_dataloader, task_learner):
         if self.sampling_method == "random":
-            querry_indices = self.sampler.sample(unlabeled_dataloader)
+            query_indices = self.sampler.sample(unlabeled_dataloader)
         elif self.sampling_method == "uncertainty":
-            querry_indices = self.sampler.sample(task_learner, 
+            query_indices = self.sampler.sample(task_learner,
                                                 unlabeled_dataloader, 
                                                 self.args.cuda)
         elif self.sampling_method == "adversary" or self.sampling_method == "adversary_1c":
-            querry_indices = self.sampler.sample(vae, 
+            query_indices = self.sampler.sample(vae,
                                                 discriminator, 
                                                 unlabeled_dataloader, 
                                                 self.args.cuda)
 
-        return querry_indices
+        # we can run some analysis on which indices were used in the query
+        # a couple of things: class based analysis. also: see how the losses distribute; and other interesting stuff
+
+        print(query_indices)
+        for x in query_indices:
+            print(unlabeled_dataloader.dataset[x]) #(X, class label, index)
+
+
+
+
+
+
+        return query_indices
                 
 
     def test(self, task_model):

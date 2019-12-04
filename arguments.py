@@ -14,8 +14,8 @@ def get_args():
     parser.add_argument('--num_vae_steps', type=int, default=2, help='Number of VAE steps taken for every task model step')
     parser.add_argument('--adversary_param', type=float, default=1, help='Hyperparameter for training. lambda2 in the paper')
     parser.add_argument('--out_path', type=str, default='./results', help='Path to where the output log will be')
-    parser.add_argument('--log_name', type=str, default='accuracies.log', help='Final performance of the models will be saved with this name')
-    parser.add_argument('--sampling_method', type=str, default='random', help='Sampling method for selecting data to be added to training set')
+    parser.add_argument('--log_name', type=str, required=True,  help='Final performance of the models will be saved with this name')
+    parser.add_argument('--sampling_method',  type=str, default='random', help='Sampling method for selecting data to be added to training set')
     args = parser.parse_args()
 
     if not os.path.exists(args.out_path):
