@@ -109,7 +109,7 @@ def main(args):
 
     current_indices = list(initial_indices)
     accuracies = []
-    
+
     for split in splits:
         # need to retrain all the models on the new images
         # re initialize and retrain the models
@@ -160,7 +160,22 @@ def main(args):
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=True)
 
+    acc_plot(accuracies)
     torch.save(accuracies, os.path.join(args.out_path, args.log_name))
+
+def acc_plot(accs):
+    import matplotlib.pyplot as plt
+    fig,ax =plt.subplots()
+    ax.plot(range(0, len(accs)), accs, marker="x")
+    ax.set_title("Accuracy vs epoch")
+    ax.set_ylabel("accuracy")
+    ax.set_xlabel("epoch")
+
+    fig.show()
+    fig.savefig("acc_plot_{}_epochs".format(len(accs)))
+
+
+
 
 def query_analysis(queried_indices, unlabeled_dataloader, args, split):
 
