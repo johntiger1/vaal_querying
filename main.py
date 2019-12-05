@@ -33,8 +33,8 @@ def main(args):
         train_dataset = Ring(args.data_path, simple_data_transformer())
         print(len(train_dataset))
         args.num_images = 2500
-        args.budget = 16
-        args.initial_budget = 16
+        args.budget = 10 #how many we can label at each round
+        args.initial_budget = 1
         args.num_classes = 5 
     
     elif args.dataset == 'mnist':
@@ -94,18 +94,21 @@ def main(args):
 
     # dataset with labels available
     train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
-            batch_size=args.batch_size, drop_last=True)
-            
+            batch_size=args.batch_size, drop_last=False)
+
+    print(len(train_dataloader))
     args.cuda = args.cuda and torch.cuda.is_available()
     solver = Solver(args, test_dataloader)
+    import math
+    splits = range(int(math.ceil(100/args.budget)))
 
-    # splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
-    splits = [args.initial_budget/float(args.num_images), 
-        (args.initial_budget+args.budget)/float(args.num_images), 
-        (args.initial_budget+args.budget*2)/float(args.num_images), 
-        (args.initial_budget+args.budget*3)/float(args.num_images), 
-        (args.initial_budget+args.budget*4)/float(args.num_images), 
-        (args.initial_budget+args.budget*5)/float(args.num_images), ]
+    # # splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    # splits = [args.initial_budget/float(args.num_images),
+    #     (args.initial_budget+args.budget)/float(args.num_images),
+    #     (args.initial_budget+args.budget*2)/float(args.num_images),
+    #     (args.initial_budget+args.budget*3)/float(args.num_images),
+    #     (args.initial_budget+args.budget*4)/float(args.num_images),
+    #     (args.initial_budget+args.budget*5)/float(args.num_images), ]
 
     current_indices = list(initial_indices)
     accuracies = []
@@ -149,30 +152,31 @@ def main(args):
         accuracies.append(acc)
 
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
+        print(sampled_indices)
 
         # unlabeled_dataloader.dataset[sampled_indices]
 
         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
 
 
-        current_indices = list(current_indices) + list(sampled_indices)
+        current_indices = list(current_indices) + list(sampled_indices) #really they just want a set here...
         sampler = data.sampler.SubsetRandomSampler(current_indices)
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
-                batch_size=args.batch_size, drop_last=True)
+                batch_size=args.batch_size, drop_last=False)
 
-    acc_plot(accuracies)
-    torch.save(accuracies, os.path.join(args.out_path, args.log_name))
+    acc_plot(accuracies, args)
+    torch.save(accuracies, os.path.join(args.out_path, args.log_name + ".txt"))
 
-def acc_plot(accs):
+def acc_plot(accs, args):
     import matplotlib.pyplot as plt
     fig,ax =plt.subplots()
     ax.plot(range(0, len(accs)), accs, marker="x")
-    ax.set_title("Accuracy vs epoch")
+    ax.set_title("Accuracy vs query; {} train iterations".format(args.train_iterations))
     ax.set_ylabel("accuracy")
-    ax.set_xlabel("epoch")
+    ax.set_xlabel("queries")
 
     fig.show()
-    fig.savefig("acc_plot_{}_epochs".format(len(accs)))
+    fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
 
 
 
@@ -189,6 +193,8 @@ def query_analysis(queried_indices, unlabeled_dataloader, args, split):
 
     import collections
 
+
+    queried_indices = np.asarray(queried_indices).reshape(1,-1)[0,:]
     for x in queried_indices:
         print(unlabeled_dataloader.dataset[x])  # (X, class label, index)
         labels.append(int(unlabeled_dataloader.dataset[x][1]))
@@ -215,7 +221,7 @@ def query_analysis(queried_indices, unlabeled_dataloader, args, split):
     ax.set_title("Histogram of query")
 
     fig.show()
-    fig.savefig("query_hist_{}.png".format(split))
+    fig.savefig(os.path.join(args.out_path,"query_hist_{}.png".format(split)))
 
 
 if __name__ == '__main__':

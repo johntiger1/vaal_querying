@@ -37,6 +37,7 @@ class Solver:
 
 
     def read_data(self, dataloader, labels=True):
+        print(len(dataloader))
         if labels:
             while True:
                 for img, label, _ in dataloader:
@@ -50,6 +51,7 @@ class Solver:
     def train_without_adv_vae(self, querry_dataloader, task_model, vae, discriminator, unlabeled_dataloader):
 
         labeled_data = self.read_data(querry_dataloader)
+
         unlabeled_data = self.read_data(unlabeled_dataloader, labels=False)
 
         optim_task_model = optim.Adam(task_model.parameters(), lr=5e-3)
@@ -234,15 +236,15 @@ class Solver:
         # we can run some analysis on which indices were used in the query
         # a couple of things: class based analysis. also: see how the losses distribute; and other interesting stuff
 
-        print(query_indices)
-        for x in query_indices:
-            print(unlabeled_dataloader.dataset[x]) #(X, class label, index)
+        # print(query_indices)
+        # for x in query_indices:
+        #     print(unlabeled_dataloader.dataset[x]) #(X, class label, index)
 
 
 
 
 
-
+        query_indices = np.asarray(query_indices).reshape(1,-1)[0,:]
         return query_indices
                 
 
