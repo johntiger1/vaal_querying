@@ -32,7 +32,7 @@ def main(args):
 
         train_dataset = Ring(args.data_path, simple_data_transformer())
         print(len(train_dataset))
-        args.num_images = 2500
+        args.num_images = 5
         args.budget = 1 #how many we can label at each round
         args.initial_budget = 1
         args.num_classes = 5 
@@ -134,6 +134,19 @@ def main(args):
         unlabeled_dataloader = data.DataLoader(train_dataset, 
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
+        print("currently:")
+        print(len(current_indices))
+        print(len(unlabeled_dataloader))
+        # as the sampler changes, so too does the dataloader
+        sampled_indices = random.choice(unlabeled_indices)
+        current_indices = list(current_indices) + [sampled_indices] #really they just want a set here...
+
+
+        continue
+        unlabeled_dataloader = data.DataLoader(train_dataset,
+                                               sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
+
+
         if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
             # train the models on the current data
             # we also want to check which sampled_indice is best, and which one should be ideal, according to the dataset!
@@ -158,17 +171,17 @@ def main(args):
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
 
         # compute a pass over all points
-        uncertainties = [-1 for i in range(2500)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
+        uncertainties = [1 for i in range(args.num_images)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
 
         # get the length. But also get the maximum element. Most likely, the length of the unlabelled dataloader does not change.
 
         for pt in unlabeled_dataloader:
             pred = task_model(pt[0].to(args.device))
-            uncertainties[pt[2].item()] = pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
+            uncertainties[pt[2].item()] -= pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
 
         # we only multiply by -1 at the end (to select the elemnts which are furtherst)
-        for i in range(len(uncertainties)):
-            uncertainties[i] = 1 - uncertainties[i]
+        # for i in range(len(uncertainties)):
+        #     uncertainties[i] = 1 - uncertainties[i]
 
 
 
@@ -177,7 +190,7 @@ def main(args):
         best_data_point,max_acc, accs = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices)
 
 
-        print(sampled_indices, accs[sampled_indices].item())
+        print(sampled_indices, accs[sampled_indices.item()])
         print(best_data_point, max_acc)
 
         if best_data_point == sampled_indices:
@@ -198,12 +211,16 @@ def main(args):
         torch.save(uncertainties, os.path.join(args.out_path, "uncertainties" + ".txt"))
         uncertainty_acc_plot(uncertainties, accs, args)
 
-        break
+        # break
 
     acc_plot(accuracies, args)
     print("In total, we had {} out of 100 optimal".format(total_optimal))
 
     torch.save(accuracies, os.path.join(args.out_path, args.log_name + ".txt"))
+
+
+#     do the indices also get readjusted? doesn't appear so...
+
 
 #
 #
@@ -221,7 +238,7 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
     print("uncertainty sampling determined {} was best".format(sampled_indices) )
 
     # uncertainties = [0 for i in range(2500)]#2500 total datapoints
-    accs = [0 for i in range(2500)]
+    accs = [0 for i in range(args.num_images)]
     # indices_order = []
 
     max_acc_gain = -1
@@ -256,7 +273,7 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
 
         if acc > max_acc_gain:
             max_acc_gain = acc
-            max_acc_datapoint = datapoint
+            max_acc_datapoint = datapoint[2].item()
 
     return np.asarray(max_acc_datapoint), max_acc_gain, accs
 
