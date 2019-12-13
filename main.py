@@ -32,14 +32,14 @@ def main(args):
 
         train_dataset = Ring(args.data_path, simple_data_transformer())
         print(len(train_dataset))
-        args.num_images = 2500
+        args.num_images = 5
         args.budget = 1 #how many we can label at each round
         args.initial_budget = 1
         args.num_classes = 5 
     
     elif args.dataset == 'mnist':
         test_dataloader = data.DataLoader(
-                datasets.MNIST(args.data_path, download=True, transform=mnist_transformer(), train=False),
+                datasets.MNIST(args.path, download=True, transform=mnist_transformer(), train=False),
             batch_size=args.batch_size, drop_last=False)
 
         train_dataset = MNIST(args.data_path)
@@ -130,9 +130,12 @@ def main(args):
 
 
         unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
+
+
         unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
         unlabeled_dataloader = data.DataLoader(train_dataset, 
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
+        print(len(unlabeled_dataloader))
 
         # print("currently:")
         # print(len(current_indices))
@@ -179,19 +182,43 @@ def main(args):
 
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
 
+        print("main")
+        print(sampled_indices)
         # compute a pass over all points
-        uncertainties =[1 for i in range(args.num_images)]
+        uncertainties =[]
+        index_order = [None for _ in range(args.num_images)]
 
-            # torch.ones((args.num_images))
+
+
+        # torch.ones((args.num_images))
 
             # [1 for i in range(args.num_images)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
 
         # get the length. But also get the maximum element. Most likely, the length of the unlabelled dataloader does not change.
 
         with torch.no_grad():
-            for pt in unlabeled_dataloader:
+            for i,pt in enumerate(unlabeled_dataloader):
+
                 pred = task_model(pt[0].to(args.device))
-                uncertainties[pt[2].item()] -= pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
+                if pred.max().item() < 0.2:
+                    print("WHAT")
+                    print(pred)
+                uncertainties.append(1 - pred.max().item() )
+                index_order[pt[2].item()] = i
+
+                # uncertainties[pt[2].item()] = 1 - pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
+
+        # uncertainties can range from 0 to 1. We want to take the maximum value
+        # it might be the case that model is perfectly confident. this means that we will have 0. that is ok. it doesn't make sense if we have 1
+
+        # HOW IS IT POSSIBLE WE HAVE 0 AS THE MAX
+        # AND HOW IS IT POSSIBLE WE DONT EVEN HAVE THE SAME SAMPLED INDICE AS WHAT THE OTHER RETURNS
+        # uncertainties = [elt for elt in uncertainties if elt is not None]
+        # ensure that the uncertainties return here are indeed accurate
+        # they wont actually line up unfortunately...
+        print("uncertainty vs sampled index")
+        print(uncertainties.index(max(uncertainties)),max(uncertainties) )
+        print(sampled_indices[0], uncertainties[index_order[sampled_indices[0]]]) # but it might be possible, that this quantity is not computed...no. it MUST be computed, since it is unlabelled
 
         # we only multiply by -1 at the end (to select the elemnts which are furtherst)
         # for i in range(len(uncertainties)):
@@ -201,7 +228,8 @@ def main(args):
 
         # print(sampled_indices)
         # unlabeled_dataloader.dataset[sampled_indices]
-        best_data_point,max_acc, accs = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices)
+        best_data_point,max_acc, accs = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices, index_order, uncertainties) #since we might have an elt with index being 2.5k, then it would mess it all up.
+        # hence, a hash based approach IS best! 
         #
         #
         print(sampled_indices, accs[sampled_indices.item()])
@@ -225,7 +253,7 @@ def main(args):
 
         torch.save(accs, os.path.join(args.out_path, "accs_{}".format(split) + ".txt"))
         torch.save(uncertainties, os.path.join(args.out_path, "uncertainties_{}".format(split) + ".txt"))
-        uncertainty_acc_plot(uncertainties, accs, args, split)
+        uncertainty_acc_plot(uncertainties, accs, args, split, sampled_indices)
 
         # break
 
@@ -255,7 +283,7 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
     print("uncertainty sampling determined {} was best".format(sampled_indices) )
 
     # uncertainties = [0 for i in range(2500)]#2500 total datapoints
-    accs = [0 for i in range(args.num_images)]
+    accs = [None for i in range(args.num_images)]
     # indices_order = []
 
     max_acc = -1
@@ -295,8 +323,7 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
         elif acc == max_acc and sampled_indices[0] == datapoint[2].item():
             max_acc_datapoint = datapoint[2].item()
 
-
-
+    accs = [elt for elt in accs if elt is not None]
     return max_acc_datapoint, max_acc, accs #in the future we can take max and the index of the max
 
 
@@ -313,16 +340,24 @@ def acc_plot(accs, args):
     fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
 
 
-def uncertainty_acc_plot(uncertainties, accs, args, split):
+def uncertainty_acc_plot(uncertainties, accs, args, split,sampled_indices):
     import matplotlib.pyplot as plt
     fig,ax =plt.subplots()
 
     # we should filter out accs and uncertainties where they are already selected...
 
     ax.scatter(uncertainties, accs, marker="x")
+
     ax.set_title("Accuracy vs Uncertainty sampling; {} train iterations".format(args.train_iterations))
     ax.set_ylabel("accuracy")
     ax.set_xlabel("uncertainties")
+
+    max_ind = accs.index(max(accs))
+    # re draw the extremum in better colours
+    ax.scatter(uncertainties[sampled_indices[0]], accs[sampled_indices[0]],c="red", marker="o", label="uncertainty sample") #inconsistency in matplotlib documentation
+
+    ax.scatter(uncertainties[max_ind], accs[max_ind ], c="green", marker="^", label="optimum sample")
+    ax.legend()
 
     fig.show()
     fig.savefig(os.path.join(args.out_path,"acc_uncertainty_{}_plot".format(split)))
