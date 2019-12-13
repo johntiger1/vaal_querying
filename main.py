@@ -32,7 +32,7 @@ def main(args):
 
         train_dataset = Ring(args.data_path, simple_data_transformer())
         print(len(train_dataset))
-        args.num_images = 5
+        args.num_images = 2500
         args.budget = 1 #how many we can label at each round
         args.initial_budget = 1
         args.num_classes = 5 
@@ -134,17 +134,26 @@ def main(args):
         unlabeled_dataloader = data.DataLoader(train_dataset, 
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
-        print("currently:")
-        print(len(current_indices))
-        print(len(unlabeled_dataloader))
+        # print("currently:")
+        # print(len(current_indices))
+        # print(current_indices)
+        #
+        # print(len(unlabeled_dataloader))
+        #
+        # print(len(train_dataset)) # this will always be 2500. but the sampler is an ultimate funneller. But what types of indices do we get?
+        # # A: they are scaled to the sampler. But the internal indices? They are similarly scaled.
+        #
+        # for i in unlabeled_dataloader:
+        #     print(i[2]) # they keep their identity. (they have the same index; this is not changed thankfully.) Hence, we can find the uncertainties, and then
+
         # as the sampler changes, so too does the dataloader
-        sampled_indices = random.choice(unlabeled_indices)
-        current_indices = list(current_indices) + [sampled_indices] #really they just want a set here...
+        # sampled_indices = random.choice(unlabeled_indices)
+        # current_indices = list(current_indices) + [sampled_indices] #really they just want a set here...
 
 
-        continue
-        unlabeled_dataloader = data.DataLoader(train_dataset,
-                                               sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
+        # continue
+        # unlabeled_dataloader = data.DataLoader(train_dataset,
+        #                                        sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
 
         if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
@@ -171,13 +180,18 @@ def main(args):
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
 
         # compute a pass over all points
-        uncertainties = [1 for i in range(args.num_images)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
+        uncertainties =[1 for i in range(args.num_images)]
+
+            # torch.ones((args.num_images))
+
+            # [1 for i in range(args.num_images)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
 
         # get the length. But also get the maximum element. Most likely, the length of the unlabelled dataloader does not change.
 
-        for pt in unlabeled_dataloader:
-            pred = task_model(pt[0].to(args.device))
-            uncertainties[pt[2].item()] -= pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
+        with torch.no_grad():
+            for pt in unlabeled_dataloader:
+                pred = task_model(pt[0].to(args.device))
+                uncertainties[pt[2].item()] -= pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
 
         # we only multiply by -1 at the end (to select the elemnts which are furtherst)
         # for i in range(len(uncertainties)):
@@ -185,15 +199,15 @@ def main(args):
 
 
 
-        print(sampled_indices)
+        # print(sampled_indices)
         # unlabeled_dataloader.dataset[sampled_indices]
         best_data_point,max_acc, accs = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices)
-
-
+        #
+        #
         print(sampled_indices, accs[sampled_indices.item()])
         print(best_data_point, max_acc)
-
-        if best_data_point == sampled_indices:
+        #
+        if best_data_point == sampled_indices[0]:
             total_optimal += 1
             print(max_acc) #this should be optimal
             # print()
@@ -207,9 +221,11 @@ def main(args):
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=False)
 
-        torch.save(accs, os.path.join(args.out_path, "accs" + ".txt"))
-        torch.save(uncertainties, os.path.join(args.out_path, "uncertainties" + ".txt"))
-        uncertainty_acc_plot(uncertainties, accs, args)
+
+
+        torch.save(accs, os.path.join(args.out_path, "accs_{}".format(split) + ".txt"))
+        torch.save(uncertainties, os.path.join(args.out_path, "uncertainties_{}".format(split) + ".txt"))
+        uncertainty_acc_plot(uncertainties, accs, args, split)
 
         # break
 
@@ -235,19 +251,20 @@ Assumes the dataloader is batch size 1
 '''
 def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solver, args, sampled_indices):
 
+    args.oracle_train_iterations = 200
     print("uncertainty sampling determined {} was best".format(sampled_indices) )
 
     # uncertainties = [0 for i in range(2500)]#2500 total datapoints
     accs = [0 for i in range(args.num_images)]
     # indices_order = []
 
-    max_acc_gain = -1
+    max_acc = -1
     max_acc_datapoint = None
     # curr_acc = 1
     from tqdm import tqdm
     # we really want to try keeping the training from what we already have...
 
-    for datapoint in tqdm(unlabeled_dataloader):
+    for datapoint in tqdm(unlabeled_dataloader): # this should get smaller each time
         task_model = model.FCNet(num_classes=args.num_classes)
         if args.dataset == "mnist":
             vae = model.VAE(args.latent_dim, nc=1)
@@ -264,18 +281,23 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
         next_train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                                            batch_size=args.batch_size, drop_last=False)
 
-        acc, vae, discriminator = solver.train_without_adv_vae(next_train_dataloader,
+        acc, vae, discriminator = solver.oracle_train_without_adv_vae(next_train_dataloader,
                                                                task_model,
                                                                vae,
                                                                discriminator,
                                                                unlabeled_dataloader)
         accs[datapoint[2].item()] = acc
-
-        if acc > max_acc_gain:
-            max_acc_gain = acc
+        print(datapoint[2].item(), acc)
+        if acc > max_acc:
+            max_acc = acc
             max_acc_datapoint = datapoint[2].item()
 
-    return np.asarray(max_acc_datapoint), max_acc_gain, accs
+        elif acc == max_acc and sampled_indices[0] == datapoint[2].item():
+            max_acc_datapoint = datapoint[2].item()
+
+
+
+    return max_acc_datapoint, max_acc, accs #in the future we can take max and the index of the max
 
 
 
@@ -291,16 +313,19 @@ def acc_plot(accs, args):
     fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
 
 
-def uncertainty_acc_plot(uncertainties, accs, args):
+def uncertainty_acc_plot(uncertainties, accs, args, split):
     import matplotlib.pyplot as plt
     fig,ax =plt.subplots()
+
+    # we should filter out accs and uncertainties where they are already selected...
+
     ax.scatter(uncertainties, accs, marker="x")
     ax.set_title("Accuracy vs Uncertainty sampling; {} train iterations".format(args.train_iterations))
     ax.set_ylabel("accuracy")
     ax.set_xlabel("uncertainties")
 
     fig.show()
-    fig.savefig(os.path.join(args.out_path,"acc_uncertainty_plot".format(len(accs))))
+    fig.savefig(os.path.join(args.out_path,"acc_uncertainty_{}_plot".format(split)))
 
 def query_analysis(queried_indices, unlabeled_dataloader, args, split):
 
