@@ -164,20 +164,28 @@ def main(args):
 
         for pt in unlabeled_dataloader:
             pred = task_model(pt[0].to(args.device))
-            uncertainties[pt[2].item()] = pred.item()
+            uncertainties[pt[2].item()] = pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
+
+        # we only multiply by -1 at the end (to select the elemnts which are furtherst)
+        for i in range(len(uncertainties)):
+            uncertainties[i] = 1 - uncertainties[i]
+
 
 
         print(sampled_indices)
         # unlabeled_dataloader.dataset[sampled_indices]
-        best_data_point,max_acc = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices, uncertainties, None)
+        best_data_point,max_acc, accs = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices)
 
 
+        print(sampled_indices, accs[sampled_indices].item())
+        print(best_data_point, max_acc)
 
         if best_data_point == sampled_indices:
             total_optimal += 1
             print(max_acc) #this should be optimal
             # print()
 
+        #
         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
 
 
@@ -186,76 +194,71 @@ def main(args):
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=False)
 
+        torch.save(accs, os.path.join(args.out_path, "accs" + ".txt"))
+        torch.save(uncertainties, os.path.join(args.out_path, "uncertainties" + ".txt"))
+        uncertainty_acc_plot(uncertainties, accs, args)
+
+        break
+
     acc_plot(accuracies, args)
     print("In total, we had {} out of 100 optimal".format(total_optimal))
 
     torch.save(accuracies, os.path.join(args.out_path, args.log_name + ".txt"))
 
+#
+#
+# def write_results(filename, ):
+#
+#
+#     pass
 
 '''
 computes (via brute force) the best point that SHOULD have been selected to best reduce the gradient loss (or acc)
 Assumes the dataloader is batch size 1
 '''
-def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solver, args, sampled_indices, uncertainties, task_model):
+def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solver, args, sampled_indices):
 
     print("uncertainty sampling determined {} was best".format(sampled_indices) )
 
-    uncertainties = [0 for i in range(2500)]#2500 total datapoints
-    accs = []
-    indices_order = []
+    # uncertainties = [0 for i in range(2500)]#2500 total datapoints
+    accs = [0 for i in range(2500)]
+    # indices_order = []
 
     max_acc_gain = -1
     max_acc_datapoint = None
     # curr_acc = 1
-
-    # perform
-    for pt in unlabeled_dataloader:
-        pred = task_model(datapoint)
-
-        indices_order.append(pt[2].item())
-        uncertainties[pt[2].item()] = model()
-
-
-        # we can also keep a ranking too
-
+    from tqdm import tqdm
     # we really want to try keeping the training from what we already have...
 
-    with torch.no_grad():
-        counter = 0
-        for datapoint in unlabeled_dataloader:
-            if indices_order[counter] != datapoint[2].item():
-                print(indices_order[counter] ,datapoint[2].item() )
-                print("diff order")
-                exit(-1)
-            counter +=1
-            task_model = model.FCNet(num_classes=args.num_classes)
-            if args.dataset == "mnist":
-                vae = model.VAE(args.latent_dim, nc=1)
-            elif args.dataset == "ring":
-                vae = model.VAE(args.latent_dim, nc=2)
-            else:
-                vae = model.VAE(args.latent_dim)
-            discriminator = model.Discriminator(args.latent_dim)
+    for datapoint in tqdm(unlabeled_dataloader):
+        task_model = model.FCNet(num_classes=args.num_classes)
+        if args.dataset == "mnist":
+            vae = model.VAE(args.latent_dim, nc=1)
+        elif args.dataset == "ring":
+            vae = model.VAE(args.latent_dim, nc=2)
+        else:
+            vae = model.VAE(args.latent_dim)
+        discriminator = model.Discriminator(args.latent_dim)
 
-            pred = task_model(datapoint)
 
-            # we should get the exact index of the datapoint
-            current_indices = list(orig_indices) + [(datapoint[2].item())]  # really they just want a set here...
-            sampler = data.sampler.SubsetRandomSampler(current_indices)
-            next_train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
-                                               batch_size=args.batch_size, drop_last=False)
+        # we should get the exact index of the datapoint
+        current_indices = list(orig_indices) + [(datapoint[2].item())]  # really they just want a set here...
+        sampler = data.sampler.SubsetRandomSampler(current_indices)
+        next_train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+                                           batch_size=args.batch_size, drop_last=False)
 
-            acc, vae, discriminator = solver.train_without_adv_vae(next_train_dataloader,
-                                                                   task_model,
-                                                                   vae,
-                                                                   discriminator,
-                                                                   unlabeled_dataloader)
+        acc, vae, discriminator = solver.train_without_adv_vae(next_train_dataloader,
+                                                               task_model,
+                                                               vae,
+                                                               discriminator,
+                                                               unlabeled_dataloader)
+        accs[datapoint[2].item()] = acc
 
-            if acc > max_acc_gain:
-                max_acc_gain = acc
-                max_acc_datapoint = datapoint
+        if acc > max_acc_gain:
+            max_acc_gain = acc
+            max_acc_datapoint = datapoint
 
-    return np.asarray(max_acc_datapoint), max_acc_gain
+    return np.asarray(max_acc_datapoint), max_acc_gain, accs
 
 
 
@@ -271,7 +274,16 @@ def acc_plot(accs, args):
     fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
 
 
+def uncertainty_acc_plot(uncertainties, accs, args):
+    import matplotlib.pyplot as plt
+    fig,ax =plt.subplots()
+    ax.scatter(uncertainties, accs, marker="x")
+    ax.set_title("Accuracy vs Uncertainty sampling; {} train iterations".format(args.train_iterations))
+    ax.set_ylabel("accuracy")
+    ax.set_xlabel("uncertainties")
 
+    fig.show()
+    fig.savefig(os.path.join(args.out_path,"acc_uncertainty_plot".format(len(accs))))
 
 def query_analysis(queried_indices, unlabeled_dataloader, args, split):
 
@@ -320,7 +332,7 @@ if __name__ == '__main__':
     args = arguments.get_args()
 
     args.device = None
-    if not args.disable_cuda and torch.cuda.is_available():
+    if args.cuda and torch.cuda.is_available():
         args.device = torch.device('cuda')
     else:
         args.device = torch.device('cpu')
