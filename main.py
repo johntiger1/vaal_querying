@@ -33,7 +33,7 @@ def main(args):
         train_dataset = Ring(args.data_path, simple_data_transformer())
         print(len(train_dataset))
         args.num_images = 2500
-        args.budget = 10 #how many we can label at each round
+        args.budget = 1 #how many we can label at each round
         args.initial_budget = 1
         args.num_classes = 5 
     
@@ -113,6 +113,8 @@ def main(args):
     current_indices = list(initial_indices)
     accuracies = []
 
+    best_data_point = None
+    total_optimal =0
     for split in splits:
         # need to retrain all the models on the new images
         # re initialize and retrain the models
@@ -134,6 +136,7 @@ def main(args):
 
         if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
             # train the models on the current data
+            # we also want to check which sampled_indice is best, and which one should be ideal, according to the dataset!
             acc, vae, discriminator = solver.train(train_dataloader,
                                                 task_model, 
                                                 vae, 
@@ -151,10 +154,29 @@ def main(args):
         print('Final accuracy with {}% of data is: {:.2f}'.format(int(split*100), acc))
         accuracies.append(acc)
 
-        sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
-        print(sampled_indices)
 
+        sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
+
+        # compute a pass over all points
+        uncertainties = [-1 for i in range(2500)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
+
+        # get the length. But also get the maximum element. Most likely, the length of the unlabelled dataloader does not change.
+
+        for pt in unlabeled_dataloader:
+            pred = task_model(pt[0].to(args.device))
+            uncertainties[pt[2].item()] = pred.item()
+
+
+        print(sampled_indices)
         # unlabeled_dataloader.dataset[sampled_indices]
+        best_data_point,max_acc = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices, uncertainties, None)
+
+
+
+        if best_data_point == sampled_indices:
+            total_optimal += 1
+            print(max_acc) #this should be optimal
+            # print()
 
         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
 
@@ -165,7 +187,77 @@ def main(args):
                 batch_size=args.batch_size, drop_last=False)
 
     acc_plot(accuracies, args)
+    print("In total, we had {} out of 100 optimal".format(total_optimal))
+
     torch.save(accuracies, os.path.join(args.out_path, args.log_name + ".txt"))
+
+
+'''
+computes (via brute force) the best point that SHOULD have been selected to best reduce the gradient loss (or acc)
+Assumes the dataloader is batch size 1
+'''
+def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solver, args, sampled_indices, uncertainties, task_model):
+
+    print("uncertainty sampling determined {} was best".format(sampled_indices) )
+
+    uncertainties = [0 for i in range(2500)]#2500 total datapoints
+    accs = []
+    indices_order = []
+
+    max_acc_gain = -1
+    max_acc_datapoint = None
+    # curr_acc = 1
+
+    # perform
+    for pt in unlabeled_dataloader:
+        pred = task_model(datapoint)
+
+        indices_order.append(pt[2].item())
+        uncertainties[pt[2].item()] = model()
+
+
+        # we can also keep a ranking too
+
+    # we really want to try keeping the training from what we already have...
+
+    with torch.no_grad():
+        counter = 0
+        for datapoint in unlabeled_dataloader:
+            if indices_order[counter] != datapoint[2].item():
+                print(indices_order[counter] ,datapoint[2].item() )
+                print("diff order")
+                exit(-1)
+            counter +=1
+            task_model = model.FCNet(num_classes=args.num_classes)
+            if args.dataset == "mnist":
+                vae = model.VAE(args.latent_dim, nc=1)
+            elif args.dataset == "ring":
+                vae = model.VAE(args.latent_dim, nc=2)
+            else:
+                vae = model.VAE(args.latent_dim)
+            discriminator = model.Discriminator(args.latent_dim)
+
+            pred = task_model(datapoint)
+
+            # we should get the exact index of the datapoint
+            current_indices = list(orig_indices) + [(datapoint[2].item())]  # really they just want a set here...
+            sampler = data.sampler.SubsetRandomSampler(current_indices)
+            next_train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+                                               batch_size=args.batch_size, drop_last=False)
+
+            acc, vae, discriminator = solver.train_without_adv_vae(next_train_dataloader,
+                                                                   task_model,
+                                                                   vae,
+                                                                   discriminator,
+                                                                   unlabeled_dataloader)
+
+            if acc > max_acc_gain:
+                max_acc_gain = acc
+                max_acc_datapoint = datapoint
+
+    return np.asarray(max_acc_datapoint), max_acc_gain
+
+
 
 def acc_plot(accs, args):
     import matplotlib.pyplot as plt
@@ -226,5 +318,12 @@ def query_analysis(queried_indices, unlabeled_dataloader, args, split):
 
 if __name__ == '__main__':
     args = arguments.get_args()
+
+    args.device = None
+    if not args.disable_cuda and torch.cuda.is_available():
+        args.device = torch.device('cuda')
+    else:
+        args.device = torch.device('cpu')
+
     main(args)
 
