@@ -32,7 +32,7 @@ def main(args):
 
         train_dataset = Ring(args.data_path, simple_data_transformer())
         print(len(train_dataset))
-        args.num_images = 5
+        args.num_images = 2500
         args.budget = 1 #how many we can label at each round
         args.initial_budget = 1
         args.num_classes = 5 
@@ -218,7 +218,7 @@ def main(args):
         # they wont actually line up unfortunately...
         print("uncertainty vs sampled index")
         print(uncertainties.index(max(uncertainties)),max(uncertainties) )
-        print(sampled_indices[0], uncertainties[index_order[sampled_indices[0]]]) # but it might be possible, that this quantity is not computed...no. it MUST be computed, since it is unlabelled
+        print(index_order[sampled_indices[0]], uncertainties[index_order[sampled_indices[0]]]) # but it might be possible, that this quantity is not computed...no. it MUST be computed, since it is unlabelled
 
         # we only multiply by -1 at the end (to select the elemnts which are furtherst)
         # for i in range(len(uncertainties)):
@@ -229,10 +229,10 @@ def main(args):
         # print(sampled_indices)
         # unlabeled_dataloader.dataset[sampled_indices]
         best_data_point,max_acc, accs = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices, index_order, uncertainties) #since we might have an elt with index being 2.5k, then it would mess it all up.
-        # hence, a hash based approach IS best! 
+        # hence, a hash based approach IS best!
         #
         #
-        print(sampled_indices, accs[sampled_indices.item()])
+        print(sampled_indices, accs[index_order[sampled_indices.item()]])
         print(best_data_point, max_acc)
         #
         if best_data_point == sampled_indices[0]:
@@ -244,7 +244,7 @@ def main(args):
         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
 
 
-        current_indices = list(current_indices) + list(sampled_indices) #really they just want a set here...
+        current_indices = list(current_indices) + list(best_data_point) #really they just want a set here...
         sampler = data.sampler.SubsetRandomSampler(current_indices)
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=False)
@@ -253,7 +253,7 @@ def main(args):
 
         torch.save(accs, os.path.join(args.out_path, "accs_{}".format(split) + ".txt"))
         torch.save(uncertainties, os.path.join(args.out_path, "uncertainties_{}".format(split) + ".txt"))
-        uncertainty_acc_plot(uncertainties, accs, args, split, sampled_indices)
+        uncertainty_acc_plot(uncertainties, accs, args, split, sampled_indices, index_order)
 
         # break
 
@@ -277,13 +277,13 @@ def main(args):
 computes (via brute force) the best point that SHOULD have been selected to best reduce the gradient loss (or acc)
 Assumes the dataloader is batch size 1
 '''
-def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solver, args, sampled_indices):
+def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solver, args, sampled_indices, index_order, uncertainties):
 
     args.oracle_train_iterations = 200
     print("uncertainty sampling determined {} was best".format(sampled_indices) )
 
     # uncertainties = [0 for i in range(2500)]#2500 total datapoints
-    accs = [None for i in range(args.num_images)]
+    accs = [None for i in range(len(uncertainties))]
     # indices_order = []
 
     max_acc = -1
@@ -314,16 +314,18 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
                                                                vae,
                                                                discriminator,
                                                                unlabeled_dataloader)
-        accs[datapoint[2].item()] = acc
+
+        accs[index_order[datapoint[2].item()]] = acc
+
         print(datapoint[2].item(), acc)
         if acc > max_acc:
             max_acc = acc
             max_acc_datapoint = datapoint[2].item()
 
         elif acc == max_acc and sampled_indices[0] == datapoint[2].item():
-            max_acc_datapoint = datapoint[2].item()
+            max_acc_datapoint = datapoint[2].item() #should take care of the stuff! in general, we do draw the general conclusion that uncertainty might not be best!
 
-    accs = [elt for elt in accs if elt is not None]
+    # accs = [elt for elt in accs if elt is not None]
     return max_acc_datapoint, max_acc, accs #in the future we can take max and the index of the max
 
 
@@ -340,7 +342,7 @@ def acc_plot(accs, args):
     fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
 
 
-def uncertainty_acc_plot(uncertainties, accs, args, split,sampled_indices):
+def uncertainty_acc_plot(uncertainties, accs, args, split,sampled_indices, index_order):
     import matplotlib.pyplot as plt
     fig,ax =plt.subplots()
 
@@ -352,9 +354,9 @@ def uncertainty_acc_plot(uncertainties, accs, args, split,sampled_indices):
     ax.set_ylabel("accuracy")
     ax.set_xlabel("uncertainties")
 
-    max_ind = accs.index(max(accs))
+    max_ind = index_order[accs.index(max(accs))]
     # re draw the extremum in better colours
-    ax.scatter(uncertainties[sampled_indices[0]], accs[sampled_indices[0]],c="red", marker="o", label="uncertainty sample") #inconsistency in matplotlib documentation
+    ax.scatter(uncertainties[index_order[sampled_indices[0]]], accs[index_order[sampled_indices[0]]],c="red", marker="o", label="uncertainty sample") #inconsistency in matplotlib documentation
 
     ax.scatter(uncertainties[max_ind], accs[max_ind ], c="green", marker="^", label="optimum sample")
     ax.legend()
