@@ -47,7 +47,9 @@ class Solver:
                 for img, _, _ in dataloader:
                     yield img
 
-
+    '''
+    
+    '''
     def train_without_adv_vae(self, querry_dataloader, task_model, vae, discriminator, unlabeled_dataloader):
 
         labeled_data = self.read_data(querry_dataloader)
@@ -90,7 +92,52 @@ class Solver:
 
         final_accuracy = self.test(task_model)
         return final_accuracy, vae, discriminator
-    
+
+    '''
+    TEST
+    '''
+    def oracle_train_without_adv_vae(self, querry_dataloader, task_model, vae, discriminator, unlabeled_dataloader):
+
+        labeled_data = self.read_data(querry_dataloader)
+
+        unlabeled_data = self.read_data(unlabeled_dataloader, labels=False)
+
+        optim_task_model = optim.Adam(task_model.parameters(), lr=5e-3)
+
+        task_model.train()
+
+        if self.args.cuda:
+            task_model = task_model.cuda()
+
+        change_lr_iter = self.args.train_iterations // 25
+
+        for iter_count in tqdm(range(self.args.oracle_train_iterations)):
+            if iter_count is not 0 and iter_count % change_lr_iter == 0:
+
+                for param in optim_task_model.param_groups:
+                    param['lr'] = param['lr'] * 0.9
+
+            labeled_imgs, labels = next(labeled_data)
+            unlabeled_imgs = next(unlabeled_data)
+
+            if self.args.cuda:
+                labeled_imgs = labeled_imgs.cuda()
+                unlabeled_imgs = unlabeled_imgs.cuda()
+                labels = labels.cuda()
+
+            # task_model step
+            preds = task_model(labeled_imgs)
+            task_loss = self.ce_loss(preds, labels)
+            optim_task_model.zero_grad()
+            task_loss.backward()
+            optim_task_model.step()
+
+            if iter_count % 100 == 0:
+                print('Current task model loss: {:.4f}'.format(task_loss.item()))
+
+        final_accuracy = self.test(task_model)
+        return final_accuracy, vae, discriminator
+
 
     def train(self, querry_dataloader, task_model, vae, discriminator, unlabeled_dataloader):
 
