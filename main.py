@@ -182,63 +182,67 @@ def main(args):
 
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
 
-        print("main")
-        print(sampled_indices)
-        # compute a pass over all points
-        uncertainties =[]
-        index_order = [None for _ in range(args.num_images)]
+        args.oracle_impute = False
+
+
+        if args.oracle_impute:
+            print("main")
+            print(sampled_indices)
+            # compute a pass over all points
+            uncertainties =[]
+            index_order = [None for _ in range(args.num_images)]
 
 
 
-        # torch.ones((args.num_images))
+            # torch.ones((args.num_images))
 
-            # [1 for i in range(args.num_images)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
+                # [1 for i in range(args.num_images)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
 
-        # get the length. But also get the maximum element. Most likely, the length of the unlabelled dataloader does not change.
+            # get the length. But also get the maximum element. Most likely, the length of the unlabelled dataloader does not change.
 
-        with torch.no_grad():
-            for i,pt in enumerate(unlabeled_dataloader):
+            with torch.no_grad():
+                for i,pt in enumerate(unlabeled_dataloader):
 
-                pred = task_model(pt[0].to(args.device))
-                if pred.max().item() < 0.2:
-                    print("WHAT")
-                    print(pred)
-                uncertainties.append(1 - pred.max().item() )
-                index_order[pt[2].item()] = i
+                    pred = task_model(pt[0].to(args.device))
+                    if pred.max().item() < 0.2:
+                        print("WHAT")
+                        print(pred)
+                    uncertainties.append(1 - pred.max().item() )
+                    index_order[pt[2].item()] = i
 
-                # uncertainties[pt[2].item()] = 1 - pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
+                    # uncertainties[pt[2].item()] = 1 - pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
 
-        # uncertainties can range from 0 to 1. We want to take the maximum value
-        # it might be the case that model is perfectly confident. this means that we will have 0. that is ok. it doesn't make sense if we have 1
+            # uncertainties can range from 0 to 1. We want to take the maximum value
+            # it might be the case that model is perfectly confident. this means that we will have 0. that is ok. it doesn't make sense if we have 1
 
-        # HOW IS IT POSSIBLE WE HAVE 0 AS THE MAX
-        # AND HOW IS IT POSSIBLE WE DONT EVEN HAVE THE SAME SAMPLED INDICE AS WHAT THE OTHER RETURNS
-        # uncertainties = [elt for elt in uncertainties if elt is not None]
-        # ensure that the uncertainties return here are indeed accurate
-        # they wont actually line up unfortunately...
-        print("uncertainty vs sampled index")
-        print(uncertainties.index(max(uncertainties)),max(uncertainties) )
-        print(index_order[sampled_indices[0]], uncertainties[index_order[sampled_indices[0]]]) # but it might be possible, that this quantity is not computed...no. it MUST be computed, since it is unlabelled
+            # HOW IS IT POSSIBLE WE HAVE 0 AS THE MAX
+            # AND HOW IS IT POSSIBLE WE DONT EVEN HAVE THE SAME SAMPLED INDICE AS WHAT THE OTHER RETURNS
+            # uncertainties = [elt for elt in uncertainties if elt is not None]
+            # ensure that the uncertainties return here are indeed accurate
+            # they wont actually line up unfortunately...
+            print("uncertainty vs sampled index")
+            print(uncertainties.index(max(uncertainties)),max(uncertainties) )
+            print(index_order[sampled_indices[0]], uncertainties[index_order[sampled_indices[0]]]) # but it might be possible, that this quantity is not computed...no. it MUST be computed, since it is unlabelled
 
-        # we only multiply by -1 at the end (to select the elemnts which are furtherst)
-        # for i in range(len(uncertainties)):
-        #     uncertainties[i] = 1 - uncertainties[i]
+            # we only multiply by -1 at the end (to select the elemnts which are furtherst)
+            # for i in range(len(uncertainties)):
+            #     uncertainties[i] = 1 - uncertainties[i]
 
 
 
-        # print(sampled_indices)
-        # unlabeled_dataloader.dataset[sampled_indices]
-        best_data_point,max_acc, accs = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices, index_order, uncertainties) #since we might have an elt with index being 2.5k, then it would mess it all up.
-        # hence, a hash based approach IS best!
-        #
-        #
-        print(sampled_indices, accs[index_order[sampled_indices.item()]])
-        print(best_data_point, max_acc)
-        #
-        if best_data_point == sampled_indices[0]:
-            total_optimal += 1
-            print(max_acc) #this should be optimal
-            # print()
+            # print(sampled_indices)
+            # unlabeled_dataloader.dataset[sampled_indices]
+            best_data_point,max_acc, accs = oracle_best_point( unlabeled_dataloader, current_indices.copy(), train_dataset, solver, args, sampled_indices, index_order, uncertainties) #since we might have an elt with index being 2.5k, then it would mess it all up.
+            # hence, a hash based approach IS best!
+            #
+            #
+            print(sampled_indices, accs[index_order[sampled_indices.item()]])
+            print(best_data_point, max_acc)
+            #
+            if best_data_point == sampled_indices[0]:
+                total_optimal += 1
+                print(max_acc) #this should be optimal
+                # print()
 
         #
         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
