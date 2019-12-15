@@ -23,6 +23,13 @@ def cifar_transformer():
         ])
 
 def main(args):
+
+
+    # with open(os.path.join(args.out_path, "args.txt"), "w") as file:
+    #     file.write(args)
+
+
+
     if args.dataset == "ring":
         print("Using Ring dataset...")
         test_dataloader = data.DataLoader(
@@ -243,21 +250,24 @@ def main(args):
                 total_optimal += 1
                 print(max_acc) #this should be optimal
                 # print()
+            torch.save(accs, os.path.join(args.out_path, "accs_{}".format(split) + ".txt"))
+            torch.save(uncertainties, os.path.join(args.out_path, "uncertainties_{}".format(split) + ".txt"))
+            uncertainty_acc_plot(uncertainties, accs, args, split, sampled_indices, index_order)
 
         #
         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
 
 
-        current_indices = list(current_indices) + [best_data_point] #really they just want a set here...
+
+        # current_indices = list(current_indices) + [best_data_point] #really they just want a set here...
+        current_indices = list(current_indices) + list(sampled_indices) #really they just want a set here...
+
         sampler = data.sampler.SubsetRandomSampler(current_indices)
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=False)
 
 
 
-        torch.save(accs, os.path.join(args.out_path, "accs_{}".format(split) + ".txt"))
-        torch.save(uncertainties, os.path.join(args.out_path, "uncertainties_{}".format(split) + ".txt"))
-        uncertainty_acc_plot(uncertainties, accs, args, split, sampled_indices, index_order)
 
         # break
 
