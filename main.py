@@ -98,6 +98,7 @@ def main(args):
         raise NotImplementedError
 
     random.seed("csc2547")
+    torch.manual_seed("2547")
 
     all_indices = set(np.arange(args.num_images))
     initial_indices = random.sample(all_indices, args.initial_budget)
@@ -126,11 +127,13 @@ def main(args):
 
     best_data_point = None
     total_optimal =0
+    task_model = model.FCNet(num_classes=args.num_classes)
+
     for split in splits:
+        task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
         # need to retrain all the models on the new images
         # re initialize and retrain the models
         # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
-        task_model = model.FCNet(num_classes=args.num_classes)
         if args.dataset == "mnist":
             vae = model.VAE(args.latent_dim, nc=1)
         elif args.dataset == "ring":
@@ -257,6 +260,12 @@ def main(args):
             torch.save(accs, os.path.join(args.out_path, "accs_{}".format(split) + ".txt"))
             torch.save(uncertainties, os.path.join(args.out_path, "uncertainties_{}".format(split) + ".txt"))
             uncertainty_acc_plot(uncertainties, accs, args, split, sampled_indices, index_order)
+
+        with open(os.path.join(args.out_path, "current_accs.txt"), "a") as acc_file:
+            acc_file.write("{}\n".format(acc))
+
+
+
 
         #
         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
