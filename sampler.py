@@ -16,7 +16,7 @@ class UncertaintySampler:
 
             with torch.no_grad():
                 out = task_learner(images)
-                preds = out.max(1)[0]
+                preds = out.max(1)[0] #if the max was 1, then we will select it, and then it will be -1 => not taken
             
             preds = preds.cpu().data
             all_preds.extend(preds)
@@ -28,9 +28,40 @@ class UncertaintySampler:
 
         _, querry_indices = torch.topk(all_preds, int(self.budget))
         querry_pool_indices = np.asarray(all_indices)[querry_indices]
-
+        print("uncertinaty sampler")
+        print(querry_pool_indices)
         return querry_pool_indices
 
+
+class EESampler:
+    def __init__(self, budget):
+        self.budget = budget
+
+    def sample(self, task_learner, data, cuda):
+        all_indices = []
+        all_preds = []
+
+        for images, _, indices in data:
+            if cuda:
+                images = images.cuda()
+
+            with torch.no_grad():
+                out = task_learner(images)
+                preds = out.max(1)[0]  # if the max was 1, then we will select it, and then it will be -1 => not taken
+
+            preds = preds.cpu().data
+            all_preds.extend(preds)
+            all_indices.extend(indices)
+
+        all_preds = torch.stack(all_preds)
+        all_preds = all_preds.view(-1)
+        # all_preds *= -1
+
+        _, querry_indices = torch.topk(all_preds, int(self.budget))
+        querry_pool_indices = np.asarray(all_indices)[querry_indices]
+        print("uncertinaty sampler")
+        print(querry_pool_indices)
+        return querry_pool_indices
 
 class RandomSampler:
     def __init__(self, budget):

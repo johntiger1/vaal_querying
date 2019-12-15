@@ -29,8 +29,12 @@ class Solver:
             self.sampler = sampler.AdversarySampler(self.args.budget)
         elif self.sampling_method == "uncertainty":
             self.sampler = sampler.UncertaintySampler(self.args.budget)
+        elif self.sampling_method == "expected_error":
+            self.sampler = sampler.EESampler(self.args.budget)
         elif self.sampling_method == "adversary_1c":
             self.sample = sampler.AdversarySamplerSingleClass(self.args.budget)
+
+
         else:
             raise Exception("No valid sampling method provideds")
 
@@ -274,6 +278,12 @@ class Solver:
             query_indices = self.sampler.sample(task_learner,
                                                 unlabeled_dataloader, 
                                                 self.args.cuda)
+
+        elif self.sampling_method == "expected_error":
+            query_indices = self.sampler.sample(task_learner,
+                                                unlabeled_dataloader,
+                                                self.args.cuda)
+
         elif self.sampling_method == "adversary" or self.sampling_method == "adversary_1c":
             query_indices = self.sampler.sample(vae,
                                                 discriminator, 
