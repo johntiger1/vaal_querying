@@ -244,7 +244,7 @@ def main(args):
         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
 
 
-        current_indices = list(current_indices) + list(best_data_point) #really they just want a set here...
+        current_indices = list(current_indices) + [best_data_point] #really they just want a set here...
         sampler = data.sampler.SubsetRandomSampler(current_indices)
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=False)
@@ -354,11 +354,11 @@ def uncertainty_acc_plot(uncertainties, accs, args, split,sampled_indices, index
     ax.set_ylabel("accuracy")
     ax.set_xlabel("uncertainties")
 
-    max_ind = index_order[accs.index(max(accs))]
+    max_ind = accs.index(max(accs))
     # re draw the extremum in better colours
-    ax.scatter(uncertainties[index_order[sampled_indices[0]]], accs[index_order[sampled_indices[0]]],c="red", marker="o", label="uncertainty sample") #inconsistency in matplotlib documentation
+    ax.scatter(uncertainties[index_order[sampled_indices[0]]], accs[index_order[sampled_indices[0]]],c="red", marker="o", label="uncertainty sample", s=64) #inconsistency in matplotlib documentation
 
-    ax.scatter(uncertainties[max_ind], accs[max_ind ], c="green", marker="^", label="optimum sample")
+    ax.scatter(uncertainties[max_ind], accs[max_ind ], c="green", marker="^", label="optimum sample",s=64)
     ax.legend()
 
     fig.show()
