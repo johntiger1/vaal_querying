@@ -98,7 +98,7 @@ def main(args):
         raise NotImplementedError
 
     random.seed("csc2547")
-    torch.manual_seed("2547")
+    torch.manual_seed("0")
 
     all_indices = set(np.arange(args.num_images))
     initial_indices = random.sample(all_indices, args.initial_budget)
@@ -196,7 +196,8 @@ def main(args):
 
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
 
-        args.oracle_impute = False
+        # args.oracle_impute = False
+        print("ORacle impute: {}".format(args.oracle_impute))
 
 
         if args.oracle_impute:
