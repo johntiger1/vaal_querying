@@ -25,8 +25,12 @@ def cifar_transformer():
 def main(args):
 
 
-    # with open(os.path.join(args.out_path, "args.txt"), "w") as file:
-    #     file.write(args)
+    with open(os.path.join(args.out_path, "args.txt"), "w") as file:
+
+        for key,val in vars(args).items():
+            file.write("{}:{}\n".format(key,val))
+
+
 
 
 
