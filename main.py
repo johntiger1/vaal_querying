@@ -151,6 +151,29 @@ def main(args):
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
         print(len(unlabeled_dataloader))
 
+        order = []
+        torch.manual_seed("0")
+
+        for i,elt in enumerate(unlabeled_dataloader):
+            order.append(elt[2].item())
+            print(elt)
+
+            if i > 10:
+                break
+    
+        torch.manual_seed("0")
+
+        print("new batch")
+        for i,elt in enumerate( unlabeled_dataloader):
+            print(elt)
+            if i > 10:
+                break
+        exit(1)            
+        # if order[i] != elt[2].item():
+        #     exit("-169")
+
+
+        
         # print("currently:")
         # print(len(current_indices))
         # print(current_indices)
