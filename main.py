@@ -151,49 +151,8 @@ def main(args):
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
         print(len(unlabeled_dataloader))
 
-        order = []
         torch.manual_seed("0")
 
-        for i,elt in enumerate(unlabeled_dataloader):
-            order.append(elt[2].item())
-            print(elt)
-
-            if i > 10:
-                break
-    
-        torch.manual_seed("0")
-
-        print("new batch")
-        for i,elt in enumerate( unlabeled_dataloader):
-            print(elt)
-            if i > 10:
-                break
-        exit(1)            
-        # if order[i] != elt[2].item():
-        #     exit("-169")
-
-
-        
-        # print("currently:")
-        # print(len(current_indices))
-        # print(current_indices)
-        #
-        # print(len(unlabeled_dataloader))
-        #
-        # print(len(train_dataset)) # this will always be 2500. but the sampler is an ultimate funneller. But what types of indices do we get?
-        # # A: they are scaled to the sampler. But the internal indices? They are similarly scaled.
-        #
-        # for i in unlabeled_dataloader:
-        #     print(i[2]) # they keep their identity. (they have the same index; this is not changed thankfully.) Hence, we can find the uncertainties, and then
-
-        # as the sampler changes, so too does the dataloader
-        # sampled_indices = random.choice(unlabeled_indices)
-        # current_indices = list(current_indices) + [sampled_indices] #really they just want a set here...
-
-
-        # continue
-        # unlabeled_dataloader = data.DataLoader(train_dataset,
-        #                                        sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
 
         if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
@@ -240,11 +199,7 @@ def main(args):
 
             with torch.no_grad():
                 for i,pt in enumerate(unlabeled_dataloader):
-
                     pred = task_model(pt[0].to(args.device))
-                    if pred.max().item() < 0.2:
-                        print("WHAT")
-                        print(pred)
                     uncertainties.append(1 - pred.max().item() )
                     index_order[pt[2].item()] = i
 
