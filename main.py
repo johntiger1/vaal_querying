@@ -64,18 +64,27 @@ def get_query(action, unlabelled_dataset, task_model):
     # from the unlabelled indices, sample an appropriate point from the class
     iters = 0
 
+    lowest_score = 100
+    lowest_datapoint = None
 
-    while iters < 100:
+    while iters < 10: # a hyper parameters
     #     randomly sample a point, return datapoint
-        datapoint = unlabelled_dataset[np.random.randint(0, len(unlabelled_dataset))]
+        datapoint = unlabelled_dataset[torch.random.randint(0, len(unlabelled_dataset))]
             # unlabelled_dataset[torch.randint(low=0, high=len(unlabelled_dataset), size=(1))] # we need the maximum index possible...
-        if datapoint[2] == targ_class:
-            break
+
+        # these should be normalized as well
+        preds = task_model(datapoint)
+
+        score = preds[:,targ_class]
+        if score < lowest_score:
+            score = lowest_score
+            lowest_datapoint = datapoint
+
         iters+=1
 
     # can also visualize this stuff!
 
-    return targ_class, datapoint
+    return targ_class, lowest_datapoint
 
     pass
 
