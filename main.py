@@ -45,6 +45,7 @@ def compute_reward(curr_state, time_step):
 
     # choices: we can try to achieve parity. Or we can try and just maximize the total acc across everything
 
+    return torch.sum(curr_state-baseline) #equiv to acc.
     # trying sum of squared errors
     return torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
 
@@ -53,8 +54,10 @@ def compute_reward(curr_state, time_step):
 Returns the actual query, given an action distribution.
 # just use the task_model as a noisy predictor. Take 10 samples, and then take the one that is predicted as most likely to 
 # be reported as the correct sample
+
+return a tupel: target class (action selected) and datapoint tuple (x[best_idx], _[best_idx], idx[best_idx])
 '''
-def get_query(action, unlabelled_dataset, task_model):
+def get_query(action, unlabelled_dataloader, task_model, args):
 
     targ_class = action.sample()
 
@@ -66,33 +69,74 @@ def get_query(action, unlabelled_dataset, task_model):
 
     lowest_score = 100
     lowest_datapoint = None
+    # print(len(unlabelled_dataset))
 
-    while iters < 10: # a hyper parameters
-    #     randomly sample a point, return datapoint
-        datapoint = unlabelled_dataset[torch.random.randint(0, len(unlabelled_dataset))]
-            # unlabelled_dataset[torch.randint(low=0, high=len(unlabelled_dataset), size=(1))] # we need the maximum index possible...
+    for batch in unlabelled_dataloader:
+        x, _, idx = batch
 
-        # these should be normalized as well
-        preds = task_model(datapoint)
+        preds = task_model(x.to(args.device))
 
-        score = preds[:,targ_class]
-        if score < lowest_score:
-            score = lowest_score
-            lowest_datapoint = datapoint
+        # best_idx = torch.argmin(torch.abs(preds[:,targ_class] -0.5))
+        best_idx = torch.argmin((preds[:,targ_class]))
+
+        return targ_class, (x[best_idx], _[best_idx], idx[best_idx])
+        # break
+
+
+    # return targ_class, lowest_datapoint
+
+    # pass
+
+'''
+Gets query using k-means clustering. We assume a k-means clustering is passed in
+
+Meta note: this is often done: we have a function that needs to "continue" its work: this is continuation, generator, yield etc.
+
+args:
+    - kmeans: a kmeans objects
+    - action: the action label
+    - unlabelled_data: a NUMPY array of the full dataset (x,y, class and label). We will then hstack or something. And also make sure to delete the row when we sample
+        - should be of size 3 X ?
+        - in reality, should be of size (N X [sum (feature_space) +1]). i.e. we will squahs all the features across. 
+         
+    - unlabelled_mask: a boolean mask that specifies whether a point has already been labelled or not 
+    - ideally, i would like to do kmeans clustering on only PART of the array. Since, i can get the x,y coord of the 
+    - data points, but then i want to convert BACK to 
+    - what the actual indices are!.. yes we should be able to do kmeans on a numpy array. And then have the cluster appear as another feature 
+    of data points that 
+'''
+
+def get_query_via_kmeans(action, unlabelled_data, args):
+
+    targ_class = action.sample()
+
+
+    iters = 0
+    datapoint = None
+    while iters < 100:
+        rand_idx = torch.randint(len(unlabelled_data), size=())
+
+        # we assume the kmeans is appended right at the very end
+        if unlabelled_data[rand_idx][-1] == targ_class:
+            datapoint = (unlabelled_data[rand_idx,0:2], unlabelled_data[rand_idx,2], unlabelled_data[rand_idx,3])
+            unlabelled_data = np.delete(unlabelled_data, rand_idx, 0 ) # test to make sure this works
+            break
 
         iters+=1
 
-    # can also visualize this stuff!
+    return targ_class, datapoint, unlabelled_data
+    # now, we just keep track of the indices
+    # now, we just need to sample the class
 
-    return targ_class, lowest_datapoint
+    datapoint = None
+    # from the unlabelled indices, sample an appropriate point from the class
+    iters = 0
 
-    pass
+    lowest_score = 100
+    lowest_datapoint = None
+    # print(len(unlabelled_dataset))
 
-'''
 
-
-
-'''
 def random_baseline(args, num_iters=100):
 
 
@@ -228,6 +272,9 @@ def rl_main(args):
     current_indices = list(initial_indices)
 
     unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
+    unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
+    unlabeled_dataloader = data.DataLoader(train_dataset,
+                                           sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
     # dataset with labels available
     train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
@@ -249,31 +296,45 @@ def rl_main(args):
 
     import copy
 
-    uncertain_args = copy.deepcopy(args)
-    uncertain_args.sampling_method = "uncertainty"
-    uncertain_accs = random_baseline(uncertain_args, args.num_episodes)
-
-
-    random_args = copy.deepcopy(args)
-    random_args.sampling_method = "random"
-    random_accs = random_baseline(random_args, args.num_episodes)
-
-
+    task_model = model.FCNet(num_classes=args.num_classes)
+    inference_model = task_model
+    inference_model.to(args.device)
 
     accuracies = []
     criterion = torch.nn.CrossEntropyLoss()
+
+    # feel like supporting a desparate cause; might delete later
+
+    entire_loader = DataLoader(train_dataset, batch_size=len(train_dataset))
+
+    # ask on SO: multi item getting using pytorch, dataloader
+
+    features, labels, idx = next(iter(entire_loader))
+    features = features.numpy()[unlabeled_indices] # we should exactly not be using it as this. Actually, it is OK. we are just saing what is labelled and what is not
+    labels = np.expand_dims(labels.numpy()[unlabeled_indices], 1)
+    idx =    np.expand_dims(idx.numpy()[unlabeled_indices], 1)
+    # X = np.hstack((features,labels ,idx )) #strange that this doesn't work
+
+    X = np.concatenate((features, labels,idx), axis=1)
+
+
+    from sklearn.cluster import KMeans
+    cluster_preds = KMeans(n_clusters=ACTION_SPACE, random_state=0).fit_predict(X)  # we can also fit one kmeans at the very start.
+    # we can also just predict (should be fast) again on new datapoints, using the trained classifier. But why not just memorize
+    unlabelled_dataset = np.concatenate((X, np.expand_dims(cluster_preds,axis=1)), axis=1)
     for i in tqdm(range(args.num_episodes)):
         pol_optimizer.zero_grad()
-        task_model = model.FCNet(num_classes=args.num_classes)
 
         # here we need a fake label, in order to back prop the loss. And don't backprop immediately, instead, get the gradient,
         # hold it, wait for the reward, and then backprop on that quantity
         action_vector = pol_class_net (curr_state )
 
         action_dist = torch.distributions.Categorical(torch.nn.functional.softmax(action_vector)) #the diff between Softmax and softmax
+        print(action_dist.probs)
 
+        # correct_label1, action1 = get_query(action_dist, unlabeled_dataloader, inference_model, args)
+        correct_label, action, unlabelled_dataset = get_query_via_kmeans(action_dist, unlabelled_dataset, args)
 
-        correct_label, action = get_query(action_dist, train_dataset)
 
         pred_vector = action_vector.view(1,-1)
         correct_label = correct_label
@@ -282,7 +343,7 @@ def rl_main(args):
 
 
         # labelled updates
-        current_indices = list(current_indices) + [action[2]  ] # really they just want a set here...
+        current_indices = list(current_indices) + [int(action[2].item())] # really they just want a set here...
         sampler = data.sampler.SubsetRandomSampler(current_indices)
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                                            batch_size=args.batch_size, drop_last=False)
@@ -302,7 +363,11 @@ def rl_main(args):
         acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
         accuracies.append(acc)
 
-        #     compute the reward
+        # if i % args.rl_batch==0:
+        #     torch.stack()
+        #     compute the reward. store the gradients
+        # store all the gradients, then torch.mean them, and then take a step. This means we only have 10/50 steps.
+
         reward = compute_reward(curr_state, i) # basline is around 1% improvement
         loss *= reward
         loss.backward()
@@ -315,13 +380,24 @@ def rl_main(args):
         with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
             acc_file.write("{} {}\n".format(acc, curr_state))
 
+        inference_model = task_model
+        inference_model.to(args.device)
+        task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
+
+    acc_plot(accuracies, args, label="policy gradient", name="policy gradient only")
+
     print(pol_class_net)
 
+    uncertain_args = copy.deepcopy(args)
+    uncertain_args.sampling_method = "uncertainty"
+    uncertain_accs = random_baseline(uncertain_args, args.num_episodes)
 
-
+    random_args = copy.deepcopy(args)
+    random_args.sampling_method = "random"
+    random_accs = random_baseline(random_args, args.num_episodes)
 
     fig, ax =    acc_plot(accuracies, args, label="policy gradient")
-    ax.plot(range(0, len(random_accs)), random_accs, marker="o", c="red", label="random")
+    ax.plot(range(0, len(random_accs)), random_accs, marker="x", c="orange", label="random")
     ax.plot(range(0, len(uncertain_accs)), uncertain_accs, marker="^", c="green", label="uncertain")
 
 
@@ -818,16 +894,18 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
 
 
 
-def acc_plot(accs, args, label="uncertainty"):
+def acc_plot(accs, args, label="uncertainty", name="acc_plot"):
     import matplotlib.pyplot as plt
+
+    file_name = os.path.join(args.out_path, "{}_{}_queries".format(name, len(accs)))
     fig,ax =plt.subplots()
-    ax.plot(range(0, len(accs)), accs, marker="x", label=label)
+    ax.plot(range(0, len(accs)), accs, marker="o", label=label)
     ax.set_title("Accuracy vs query; {} train iterations".format(args.train_iterations))
     ax.set_ylabel("accuracy")
     ax.set_xlabel("queries")
 
     fig.show()
-    fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
+    fig.savefig(file_name )
     return fig, ax
 
 '''
