@@ -22,5 +22,21 @@ class PolicyNet(nn.Module):
 
     def forward(self,x):
         x = F.relu(self.input_layer(x))
-        return F.softmax(self.hidden(x)) # return a valid prob distribution..or not!
+        return self.hidden(x)
+        # return F.softmax(self.hidden(x)) # return a valid prob distribution..or not!
+
+#
+# '''
+# This Policy net takes in state which is the per class acc, and then returns the index of a class to select.
+# '''
+# class Policy_Class_Net(nn.Module):
+#     def __init__(self, state_dim, actions_dim, hidden_dim=64):
+#         super(PolicyNet, self).__init__()
+#         self.input_layer = nn.Linear(state_dim, hidden_dim)
+#         self.hidden = nn.Linear(hidden_dim, actions_dim)
+#
+#
+#     def forward(self,x):
+#         x = F.relu(self.input_layer(x))
+#         return F.softmax(self.hidden(x)) # return a valid prob distribution..or not!
 

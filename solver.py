@@ -58,7 +58,6 @@ class Solver:
 
         labeled_data = self.read_data(querry_dataloader)
 
-        unlabeled_data = self.read_data(unlabeled_dataloader, labels=False)
 
         optim_task_model = optim.Adam(task_model.parameters(), lr=5e-3)
 
@@ -76,11 +75,9 @@ class Solver:
                     param['lr'] = param['lr'] * 0.9 
 
             labeled_imgs, labels = next(labeled_data)
-            unlabeled_imgs = next(unlabeled_data)
 
             if self.args.cuda:
                 labeled_imgs = labeled_imgs.cuda()
-                unlabeled_imgs = unlabeled_imgs.cuda()
                 labels = labels.cuda()
 
             # task_model step

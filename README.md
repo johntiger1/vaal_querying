@@ -6,6 +6,10 @@ Samarth Sinha*, Sayna Ebrahimi*, Trevor Darrell, Internation Conference on Compu
 
 *First two authors contributed equally*
 
+## Note temporarily added by John
+
+
+
 ## Note temporary added by Eric
 To run the code using different sampling methods using the 2d dataset (i.e. ring dataset), run the following commmands:
 
