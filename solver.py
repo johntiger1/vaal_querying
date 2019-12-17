@@ -54,7 +54,7 @@ class Solver:
     '''
     
     '''
-    def train_without_adv_vae(self, querry_dataloader, task_model, vae, discriminator, unlabeled_dataloader):
+    def train_without_adv_vae(self, querry_dataloader, task_model, vae, discriminator, unlabeled_dataloader, args):
 
         labeled_data = self.read_data(querry_dataloader)
 
@@ -93,6 +93,50 @@ class Solver:
             if iter_count % 100 == 0:
                 print('Current task model loss: {:.4f}'.format(task_loss.item()))
 
+
+        final_accuracy = self.test(task_model)
+
+        class_based_accs = self.class_based_test(task_model, args.num_classes)
+        return final_accuracy, vae, discriminator, class_based_accs
+
+    def train_ret_class_accs(self, querry_dataloader, task_model, vae, discriminator, unlabeled_dataloader):
+
+        labeled_data = self.read_data(querry_dataloader)
+
+        unlabeled_data = self.read_data(unlabeled_dataloader, labels=False)
+
+        optim_task_model = optim.Adam(task_model.parameters(), lr=5e-3)
+
+        task_model.train()
+
+        if self.args.cuda:
+            task_model = task_model.cuda()
+
+        change_lr_iter = self.args.train_iterations // 25
+
+        for iter_count in tqdm(range(self.args.train_iterations)):
+            if iter_count is not 0 and iter_count % change_lr_iter == 0:
+
+                for param in optim_task_model.param_groups:
+                    param['lr'] = param['lr'] * 0.9
+
+            labeled_imgs, labels = next(labeled_data)
+            unlabeled_imgs = next(unlabeled_data)
+
+            if self.args.cuda:
+                labeled_imgs = labeled_imgs.cuda()
+                unlabeled_imgs = unlabeled_imgs.cuda()
+                labels = labels.cuda()
+
+            # task_model step
+            preds = task_model(labeled_imgs)
+            task_loss = self.ce_loss(preds, labels)
+            optim_task_model.zero_grad()
+            task_loss.backward()
+            optim_task_model.step()
+
+            if iter_count % 100 == 0:
+                print('Current task model loss: {:.4f}'.format(task_loss.item()))
 
         final_accuracy = self.test(task_model)
         return final_accuracy, vae, discriminator
@@ -304,6 +348,34 @@ class Solver:
         query_indices = np.asarray(query_indices).reshape(1,-1)[0,:]
         return query_indices
                 
+
+    def class_based_test(self, task_model, num_classes):
+        task_model.eval()
+        total, correct = torch.zeros((num_classes)), torch.zeros((num_classes))
+
+
+
+        for imgs, labels in self.test_dataloader:
+            if self.args.cuda:
+                imgs = imgs.cuda()
+
+            with torch.no_grad():
+                preds = task_model(imgs)
+
+            preds = torch.argmax(preds, dim=1).cpu().numpy()
+
+            # compute the accuracy per class. Assumes the labels go from 0 to k. This must be passed in
+
+            # good ol' fashioned iterating through the tensor will do
+            for y_pred, y in zip(preds, labels):
+                # y = y.item()
+                total[y.item()] += 1
+
+                if y_pred == y.item():
+                    correct[y] += 1
+
+
+        return correct / total * 100
 
     def test(self, task_model):
         task_model.eval()
