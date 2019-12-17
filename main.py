@@ -19,7 +19,7 @@ import torch.optim as optim
 from rl.PolicyNetwork import PolicyNet
 from tqdm import tqdm
 
-
+from identity_sampler import IdentitySampler
 def cifar_transformer():
     return transforms.Compose([
             transforms.RandomHorizontalFlip(),
@@ -45,14 +45,16 @@ def compute_reward(curr_state, time_step):
 
     # choices: we can try to achieve parity. Or we can try and just maximize the total acc across everything
 
-
-    return torch.sum(class_acc - baseline) # we want to achieve 20% acc in all of them...
+    # trying sum of squared errors
+    return torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
 
 
 '''
 Returns the actual query, given an action distribution.
+# just use the task_model as a noisy predictor. Take 10 samples, and then take the one that is predicted as most likely to 
+# be reported as the correct sample
 '''
-def get_query(action, unlabelled_dataset):
+def get_query(action, unlabelled_dataset, task_model):
 
     targ_class = action.sample()
 
@@ -61,7 +63,6 @@ def get_query(action, unlabelled_dataset):
     datapoint = None
     # from the unlabelled indices, sample an appropriate point from the class
     iters = 0
-
 
 
     while iters < 100:
@@ -105,8 +106,7 @@ def random_baseline(args, num_iters=100):
         args.num_classes = 5
 
 
-    random.seed("csc2547")
-    torch.manual_seed(0)
+
     solver = Solver(args, test_dataloader)
 
     all_indices = set(np.arange(args.num_images))
@@ -152,14 +152,34 @@ def random_baseline(args, num_iters=100):
 
 
         print('Final accuracy with {}% of data is: {:.2f}'.format(int(i), acc))
+        print(class_acc)
         accuracies.append(acc)
 
-        sampled_indices = np.random.choice(unlabeled_indices)
-        current_indices = list(current_indices) + [sampled_indices] #really they just want a set here...
+
+        sampled_indices = solver.sample_for_labeling(None, None, unlabeled_dataloader, task_model)
+
+
+        inquiry_sampler = data.sampler.SubsetRandomSampler(sampled_indices)
+
+        inquiry_dataloader = data.DataLoader(train_dataset, sampler=inquiry_sampler ,
+                batch_size=args.batch_size, drop_last=False)
+
+        for elt in inquiry_dataloader:
+            print(elt)
+
+
+        print(sampled_indices)
+
+        current_indices = list(current_indices) + list(sampled_indices) #really they just want a set here...
 
         sampler = data.sampler.SubsetRandomSampler(current_indices)
         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                 batch_size=args.batch_size, drop_last=False)
+
+        with open(os.path.join(args.out_path, "{}_current_accs.txt".format(args.sampling_method)), "a") as acc_file:
+            acc_file.write("{} {}\n".format(acc, class_acc))
+
+
 
     return accuracies
 
@@ -188,8 +208,8 @@ def rl_main(args):
         args.initial_budget = 1
         args.num_classes = 5
 
-    random.seed("csc2547")
-    torch.manual_seed(0)
+    random.seed(2547)
+    torch.manual_seed(args.torch_manual_seed)
     args.cuda = args.cuda and torch.cuda.is_available()
     solver = Solver(args, test_dataloader)
 
@@ -218,19 +238,18 @@ def rl_main(args):
 
     curr_state = torch.zeros((1,STATE_SPACE)) #only feed it in the past state directly
 
+    import copy
 
-    '''
-
-
-
-        unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
-        unlabeled_dataloader = data.DataLoader(train_dataset,
-                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
-    '''
+    uncertain_args = copy.deepcopy(args)
+    uncertain_args.sampling_method = "uncertainty"
+    uncertain_accs = random_baseline(uncertain_args, args.num_episodes)
 
 
-    # run the random-baseline first
-    random_accs = random_baseline(args, args.num_episodes)
+    random_args = copy.deepcopy(args)
+    random_args.sampling_method = "random"
+    random_accs = random_baseline(random_args, args.num_episodes)
+
+
 
     accuracies = []
     criterion = torch.nn.CrossEntropyLoss()
@@ -284,14 +303,24 @@ def rl_main(args):
         print(curr_state)
         print(acc)
 
+        with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
+            acc_file.write("{} {}\n".format(acc, curr_state))
 
     print(pol_class_net)
 
+
+
+
     fig, ax =    acc_plot(accuracies, args, label="policy gradient")
     ax.plot(range(0, len(random_accs)), random_accs, marker="o", c="red", label="random")
+    ax.plot(range(0, len(uncertain_accs)), uncertain_accs, marker="^", c="green", label="uncertain")
+
+
     ax.legend()
     fig.show()
     fig.savefig(os.path.join(args.out_path, "comparison_acc_plot_{}_queries".format(len(accuracies))))
+
+
 
     # try comparing vs a regularly trained network (random sampling)
 
@@ -521,8 +550,9 @@ def main(args):
     else:
         raise NotImplementedError
 
-    random.seed("csc2547")
-    torch.manual_seed(0)
+    np.random.seed(2547)
+    random.seed(2547)
+    torch.manual_seed(args.torch_manual_seed)
 
     all_indices = set(np.arange(args.num_images))
     initial_indices = random.sample(all_indices, args.initial_budget)
@@ -762,6 +792,23 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
 
 
 
+# def multi_acc_plot(multi_accs, args, multi_labels):
+#     import matplotlib.pyplot as plt
+#     fig, ax = plt.subplots()
+#
+#     for i,accs in enumerate(multi_accs):
+#         ax.plot(range(0, len(accs)), accs, label=multi_labels[i])
+#
+#     ax.set_title("Accuracy vs query; {} train iterations".format(args.train_iterations))
+#     ax.set_ylabel("accuracy")
+#     ax.set_xlabel("queries")
+#
+#     fig.show()
+#     fig.savefig(os.path.join(args.out_path, "multi_acc_plot_{}_queries".format(len(accs))))
+#     return fig, ax
+
+
+
 def acc_plot(accs, args, label="uncertainty"):
     import matplotlib.pyplot as plt
     fig,ax =plt.subplots()
@@ -773,6 +820,39 @@ def acc_plot(accs, args, label="uncertainty"):
     fig.show()
     fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
     return fig, ax
+
+'''
+A double acc plot, showing class-based performances.
+'''
+# def double_class_acc_plot(accs1, accs2, args, label1="uncertainty", label2="uncertainty"):
+#     import matplotlib.pyplot as plt
+#     fig,ax =plt.subplots()
+#     ax.plot(range(0, len(accs)), accs, marker="x", label=label)
+#     ax.set_title("Accuracy vs query; {} train iterations".format(args.train_iterations))
+#     ax.set_ylabel("accuracy")
+#     ax.set_xlabel("queries")
+#
+#     fig.show()
+#     fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
+#     return fig, ax
+#
+# '''
+# assumes that accs is a 5 by N graph.
+# '''
+# def single_class_acc_plot(accs1, args, label1="uncertainty"):
+#     import matplotlib.pyplot as plt
+#     fig,ax =plt.subplots()
+#
+#     for
+#
+#     ax.plot(range(0, len(accs)), accs, marker="x", label=label)
+#     ax.set_title("Accuracy vs query; {} train iterations".format(args.train_iterations))
+#     ax.set_ylabel("accuracy")
+#     ax.set_xlabel("queries")
+#
+#     fig.show()
+#     fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
+#     return fig, ax
 
 def uncertainty_acc_plot(uncertainties, accs, args, split,sampled_indices, index_order):
     import matplotlib.pyplot as plt
