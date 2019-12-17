@@ -16,6 +16,10 @@ def get_args():
     parser.add_argument('--out_path', type=str, default='./regular', help='Path to where the output log will be')
     parser.add_argument('--log_name', type=str, required=True,  help='Final performance of the models will be saved with this name')
     parser.add_argument('--sampling_method',  type=str, default='random', help='Sampling method for selecting data to be added to training set')
+    parser.add_argument('--torch_manual_seed',  type=int, default=0, help='Manual seed for torch')
+    parser.add_argument('--oracle_impute',   default=False, action="store_true", help='Whether to run oracle imputation step')
+
+    
     args = parser.parse_args()
 
     if not os.path.exists(args.out_path):
