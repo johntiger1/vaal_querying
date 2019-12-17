@@ -17,6 +17,8 @@ import arguments
 import torch.optim as optim
 
 from rl.PolicyNetwork import PolicyNet
+from tqdm import tqdm
+
 
 def cifar_transformer():
     return transforms.Compose([
@@ -29,25 +31,28 @@ Simulates a step of the environment. Returns the new state, and the next dynamic
 
 '''
 def environment_step(train_dataloader, solver, task_model):
-    acc, vae, discriminator = solver.train_without_adv_vae(train_dataloader,
+    acc, vae, discriminator, class_accs = solver.train_without_adv_vae(train_dataloader,
                                                            task_model,
                                                            None,
                                                            None,
-                                                           None)
+                                                           None, args)
 
-    return acc
+    return acc, class_accs.unsqueeze(0)
 
-def compute_reward(curr_state):
-    acc = curr_state
-    baseline = 20 + 1
-    return acc - baseline
-    pass
+def compute_reward(curr_state, time_step):
+    class_acc = curr_state
+    baseline = 20 + 0.8*time_step
+
+    # choices: we can try to achieve parity. Or we can try and just maximize the total acc across everything
+
+
+    return torch.sum(class_acc - baseline) # we want to achieve 20% acc in all of them...
 
 
 '''
 Returns the actual query, given an action distribution.
 '''
-def get_query(action, unlabeled_indices, train_dataset):
+def get_query(action, unlabelled_dataset):
 
     targ_class = action.sample()
 
@@ -56,269 +61,290 @@ def get_query(action, unlabeled_indices, train_dataset):
     datapoint = None
     # from the unlabelled indices, sample an appropriate point from the class
     iters = 0
+
+
+
     while iters < 100:
     #     randomly sample a point, return datapoint
-        datapoint = train_dataset[torch.random()]
+        datapoint = unlabelled_dataset[np.random.randint(0, len(unlabelled_dataset))]
+            # unlabelled_dataset[torch.randint(low=0, high=len(unlabelled_dataset), size=(1))] # we need the maximum index possible...
         if datapoint[2] == targ_class:
             break
         iters+=1
 
     # can also visualize this stuff!
 
-    return datapoint
+    return targ_class, datapoint
 
     pass
 
-# def rl_main(args):
-#     with open(os.path.join(args.out_path, "args.txt"), "w") as file:
-#
-#         for key,val in vars(args).items():
-#             file.write("{}:{}\n".format(key,val))
-#
-#
-#
-#
-#
-#     if args.dataset == "ring":
-#         print("Using Ring dataset...")
-#         test_dataloader = data.DataLoader(
-#             Ring(args.data_path, transform=simple_data_transformer(), return_idx=False, testset=True),
-#             batch_size=args.batch_size, drop_last=False
-#         )
-#
-#         train_dataset = Ring(args.data_path, simple_data_transformer())
-#         print(len(train_dataset))
-#         args.num_images = 2500
-#         args.budget = 1 #how many we can label at each round
-#         args.initial_budget = 1
-#         args.num_classes = 5
-#
-#     random.seed("csc2547")
-#     torch.manual_seed("0")
-#     args.cuda = args.cuda and torch.cuda.is_available()
-#     solver = Solver(args, test_dataloader)
-#
-#     all_indices = set(np.arange(args.num_images))
-#     initial_indices = random.sample(all_indices, args.initial_budget)
-#     sampler = data.sampler.SubsetRandomSampler(initial_indices)
-#     current_indices = list(initial_indices)
-#
-#     unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
-#
-#     # dataset with labels available
-#     train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
-#                                        batch_size=args.batch_size, drop_last=False)
-#
-#     '''
-#     FORMULATION1: We will feed in the class_specific accuracies.
-#     '''
-#     STATE_SPACE = args.num_classes
-#     ACTION_SPACE = args.num_classes
-#
-#     task_model = model.FCNet(num_classes=args.num_classes)
-#
-#     pol_class_net = PolicyNet(STATE_SPACE , ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
-#     pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-3)
-#     args.num_episodes = 10000
-#
-#
-#     curr_state = torch.zeros((STATE_SPACE,1)) #only feed it in the past state directly
-#
-#
-#     '''
-#
-#
-#
-#         unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
-#         unlabeled_dataloader = data.DataLoader(train_dataset,
-#                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
-#     '''
-#
-#     for i in range(args.num_episodes):
-#         pol_optimizer.zero_grad()
-#         action_vector = pol_class_net (curr_state )
-#         action_dist = torch.distributions.Categorical(action_vector)
-#
-#
-#         action = get_query(action_dist, unlabeled_indices)
-#
-#
-#         # labelled updates
-#         current_indices = list(current_indices) + [action  ] # really they just want a set here...
-#         sampler = data.sampler.SubsetRandomSampler(current_indices)
-#         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
-#                                            batch_size=args.batch_size, drop_last=False)
-#
-#         # unlabelled updates
-#         unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
-#         unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
-#         unlabeled_dataloader = data.DataLoader(train_dataset,
-#                                                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
-#
-#         #data loader not subscriptable => we should deal with the indices.
-#         # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
-#         # lets just try the dataloader, but it will be challenging when we have the batch size...
-#
-#         curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
-#
-#
-#
-#         #     compute the reward
-#         reward = compute_reward(curr_state) # basline is around 1% improvement
-#
-#         reward.backwards()
-#         pol_optimizer.step()
-#
-#
-#
-#     #     ever batch size episodes, make the gradient update
-#     #     compute a rollout, or at least one step
-#     # need an environment step
-#
-#
-#     print(len(train_dataloader))
-#
-#
-#     import math
-#     splits = range(int(math.ceil(100 / args.budget)))
-#
-#     # # splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
-#     # splits = [args.initial_budget/float(args.num_images),
-#     #     (args.initial_budget+args.budget)/float(args.num_images),
-#     #     (args.initial_budget+args.budget*2)/float(args.num_images),
-#     #     (args.initial_budget+args.budget*3)/float(args.num_images),
-#     #     (args.initial_budget+args.budget*4)/float(args.num_images),
-#     #     (args.initial_budget+args.budget*5)/float(args.num_images), ]
-#
-#     current_indices = list(initial_indices)
-#     accuracies = []
-#
-#     best_data_point = None
-#     total_optimal = 0
-#
-#     for split in splits:
-#         task_model = model.FCNet(num_classes=args.num_classes)  # remake a new task model each time
-#         # need to retrain all the models on the new images
-#         # re initialize and retrain the models
-#         # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
-#         if args.dataset == "mnist":
-#             vae = model.VAE(args.latent_dim, nc=1)
-#         elif args.dataset == "ring":
-#             vae = model.VAE(args.latent_dim, nc=2)
-#         else:
-#             vae = model.VAE(args.latent_dim)
-#         discriminator = model.Discriminator(args.latent_dim)
-#
-#         unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
-#
-#         unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
-#         unlabeled_dataloader = data.DataLoader(train_dataset,
-#                                                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
-#         print(len(unlabeled_dataloader))
-#
-#         if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
-#             # train the models on the current data
-#             # we also want to check which sampled_indice is best, and which one should be ideal, according to the dataset!
-#             acc, vae, discriminator = solver.train(train_dataloader,
-#                                                    task_model,
-#                                                    vae,
-#                                                    discriminator,
-#                                                    unlabeled_dataloader)
-#         else:
-#             # train the models on the current data
-#             acc, vae, discriminator = solver.train_without_adv_vae(train_dataloader,
-#                                                                    task_model,
-#                                                                    vae,
-#                                                                    discriminator,
-#                                                                    unlabeled_dataloader)
-#
-#         print('Final accuracy with {}% of data is: {:.2f}'.format(int(split * 100), acc))
-#         accuracies.append(acc)
-#
-#         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
-#
-#         args.oracle_impute = False
-#         print("ORacle impute: {}".format(args.oracle_impute))
-#
-#
-#
-#         if args.oracle_impute:
-#             print("main")
-#             print(sampled_indices)
-#             # compute a pass over all points
-#             uncertainties = []
-#             index_order = [None for _ in range(args.num_images)]
-#
-#             # torch.ones((args.num_images))
-#
-#             # [1 for i in range(args.num_images)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
-#
-#             # get the length. But also get the maximum element. Most likely, the length of the unlabelled dataloader does not change.
-#
-#             with torch.no_grad():
-#                 for i, pt in enumerate(unlabeled_dataloader):
-#                     pred = task_model(pt[0].to(args.device))
-#                     uncertainties.append(1 - pred.max().item())
-#                     index_order[pt[2].item()] = i
-#
-#                     # uncertainties[pt[2].item()] = 1 - pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
-#
-#             # uncertainties can range from 0 to 1. We want to take the maximum value
-#             # it might be the case that model is perfectly confident. this means that we will have 0. that is ok. it doesn't make sense if we have 1
-#
-#             # HOW IS IT POSSIBLE WE HAVE 0 AS THE MAX
-#             # AND HOW IS IT POSSIBLE WE DONT EVEN HAVE THE SAME SAMPLED INDICE AS WHAT THE OTHER RETURNS
-#             # uncertainties = [elt for elt in uncertainties if elt is not None]
-#             # ensure that the uncertainties return here are indeed accurate
-#             # they wont actually line up unfortunately...
-#             print("uncertainty vs sampled index")
-#             print(uncertainties.index(max(uncertainties)), max(uncertainties))
-#             print(index_order[sampled_indices[0]], uncertainties[index_order[sampled_indices[
-#                 0]]])  # but it might be possible, that this quantity is not computed...no. it MUST be computed, since it is unlabelled
-#
-#             # we only multiply by -1 at the end (to select the elemnts which are furtherst)
-#             # for i in range(len(uncertainties)):
-#             #     uncertainties[i] = 1 - uncertainties[i]
-#
-#             # print(sampled_indices)
-#             # unlabeled_dataloader.dataset[sampled_indices]
-#             best_data_point, max_acc, accs = oracle_best_point(unlabeled_dataloader, current_indices.copy(),
-#                                                                train_dataset, solver, args, sampled_indices,
-#                                                                index_order,
-#                                                                uncertainties)  # since we might have an elt with index being 2.5k, then it would mess it all up.
-#             # hence, a hash based approach IS best!
-#             #
-#             #
-#             print(sampled_indices, accs[index_order[sampled_indices.item()]])
-#             print(best_data_point, max_acc)
-#             #
-#             if best_data_point == sampled_indices[0]:
-#                 total_optimal += 1
-#                 print(max_acc)  # this should be optimal
-#                 # print()
-#             torch.save(accs, os.path.join(args.out_path, "accs_{}".format(split) + ".txt"))
-#             torch.save(uncertainties, os.path.join(args.out_path, "uncertainties_{}".format(split) + ".txt"))
-#             uncertainty_acc_plot(uncertainties, accs, args, split, sampled_indices, index_order)
-#
-#         with open(os.path.join(args.out_path, "current_accs.txt"), "a") as acc_file:
-#             acc_file.write("{}\n".format(acc))
-#
-#         #
-#         query_analysis(sampled_indices, unlabeled_dataloader, args, split)
-#
-#         # current_indices = list(current_indices) + [best_data_point] #really they just want a set here...
-#         current_indices = list(current_indices) + list(sampled_indices)  # really they just want a set here...
-#
-#         sampler = data.sampler.SubsetRandomSampler(current_indices)
-#         train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
-#                                            batch_size=args.batch_size, drop_last=False)
-#
-#         # break
-#
-#     acc_plot(accuracies, args)
-#     print("In total, we had {} out of 100 optimal".format(total_optimal))
-#
-#     torch.save(accuracies, os.path.join(args.out_path, args.log_name + ".txt"))
+def rl_main(args):
+    with open(os.path.join(args.out_path, "args.txt"), "w") as file:
+
+        for key,val in vars(args).items():
+            file.write("{}:{}\n".format(key,val))
+
+
+
+
+
+    if args.dataset == "ring":
+        print("Using Ring dataset...")
+        test_dataloader = data.DataLoader(
+            Ring(args.data_path, transform=simple_data_transformer(), return_idx=False, testset=True),
+            batch_size=args.batch_size, drop_last=False
+        )
+
+        train_dataset = Ring(args.data_path, simple_data_transformer())
+        print(len(train_dataset))
+        args.num_images = 2500
+        args.budget = 1 #how many we can label at each round
+        args.initial_budget = 1
+        args.num_classes = 5
+
+    random.seed("csc2547")
+    torch.manual_seed(0)
+    args.cuda = args.cuda and torch.cuda.is_available()
+    solver = Solver(args, test_dataloader)
+
+    all_indices = set(np.arange(args.num_images))
+    initial_indices = random.sample(all_indices, args.initial_budget)
+    sampler = data.sampler.SubsetRandomSampler(initial_indices)
+    current_indices = list(initial_indices)
+
+    unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
+
+    # dataset with labels available
+    train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+                                       batch_size=args.batch_size, drop_last=False)
+
+    '''
+    FORMULATION1: We will feed in the class_specific accuracies.
+    '''
+    STATE_SPACE = args.num_classes
+    ACTION_SPACE = args.num_classes
+
+
+    pol_class_net = PolicyNet(STATE_SPACE , ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
+    pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-3)
+    args.num_episodes = 100
+
+
+    curr_state = torch.zeros((1,STATE_SPACE)) #only feed it in the past state directly
+
+
+    '''
+
+
+
+        unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
+        unlabeled_dataloader = data.DataLoader(train_dataset,
+                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
+    '''
+
+    accuracies = []
+    criterion = torch.nn.CrossEntropyLoss()
+    for i in tqdm(range(args.num_episodes)):
+        pol_optimizer.zero_grad()
+        task_model = model.FCNet(num_classes=args.num_classes)
+
+        # here we need a fake label, in order to back prop the loss. And don't backprop immediately, instead, get the gradient,
+        # hold it, wait for the reward, and then backprop on that quantity
+        action_vector = pol_class_net (curr_state )
+
+        action_dist = torch.distributions.Categorical(torch.nn.functional.softmax(action_vector)) #the diff between Softmax and softmax
+
+
+        correct_label, action = get_query(action_dist, train_dataset)
+
+        pred_vector = action_vector.view(1,-1)
+        correct_label = correct_label
+        loss =criterion (pred_vector, correct_label)
+
+
+
+        # labelled updates
+        current_indices = list(current_indices) + [action[2]  ] # really they just want a set here...
+        sampler = data.sampler.SubsetRandomSampler(current_indices)
+        train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+                                           batch_size=args.batch_size, drop_last=False)
+
+        # unlabelled updates
+        unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
+        unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
+        unlabeled_dataloader = data.DataLoader(train_dataset,
+                                               sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
+
+        #data loader not subscriptable => we should deal with the indices.
+        # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
+        # lets just try the dataloader, but it will be challenging when we have the batch size...
+        # print(correct_label)
+        print(action)
+
+        acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
+        accuracies.append(acc)
+
+        #     compute the reward
+        reward = compute_reward(curr_state, i) # basline is around 1% improvement
+        loss *= reward
+        loss.backward()
+        pol_optimizer.step()
+        print(curr_state)
+        print(acc)
+
+    print(pol_class_net)
+    acc_plot(accuracies, args)
+
+    # now that the policy network is trained, we can use it to actually do the inference
+
+    # #     ever batch size episodes, make the gradient update
+    # #     compute a rollout, or at least one step
+    # # need an environment step
+    #
+    #
+    # print(len(train_dataloader))
+    #
+    #
+    # import math
+    # splits = range(int(math.ceil(100 / args.budget)))
+    #
+    # # # splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    # # splits = [args.initial_budget/float(args.num_images),
+    # #     (args.initial_budget+args.budget)/float(args.num_images),
+    # #     (args.initial_budget+args.budget*2)/float(args.num_images),
+    # #     (args.initial_budget+args.budget*3)/float(args.num_images),
+    # #     (args.initial_budget+args.budget*4)/float(args.num_images),
+    # #     (args.initial_budget+args.budget*5)/float(args.num_images), ]
+    #
+    # current_indices = list(initial_indices)
+    # accuracies = []
+    #
+    # best_data_point = None
+    # total_optimal = 0
+    #
+    # for split in splits:
+    #     task_model = model.FCNet(num_classes=args.num_classes)  # remake a new task model each time
+    #     # need to retrain all the models on the new images
+    #     # re initialize and retrain the models
+    #     # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+    #     if args.dataset == "mnist":
+    #         vae = model.VAE(args.latent_dim, nc=1)
+    #     elif args.dataset == "ring":
+    #         vae = model.VAE(args.latent_dim, nc=2)
+    #     else:
+    #         vae = model.VAE(args.latent_dim)
+    #     discriminator = model.Discriminator(args.latent_dim)
+    #
+    #     unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
+    #
+    #     unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
+    #     unlabeled_dataloader = data.DataLoader(train_dataset,
+    #                                            sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
+    #     print(len(unlabeled_dataloader))
+    #
+    #     if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
+    #         # train the models on the current data
+    #         # we also want to check which sampled_indice is best, and which one should be ideal, according to the dataset!
+    #         acc, vae, discriminator = solver.train(train_dataloader,
+    #                                                task_model,
+    #                                                vae,
+    #                                                discriminator,
+    #                                                unlabeled_dataloader)
+    #     else:
+    #         # train the models on the current data
+    #         acc, vae, discriminator = solver.train_without_adv_vae(train_dataloader,
+    #                                                                task_model,
+    #                                                                vae,
+    #                                                                discriminator,
+    #                                                                unlabeled_dataloader)
+    #
+    #     print('Final accuracy with {}% of data is: {:.2f}'.format(int(split * 100), acc))
+    #     accuracies.append(acc)
+    #
+    #     sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader, task_model)
+    #
+    #     args.oracle_impute = False
+    #     print("ORacle impute: {}".format(args.oracle_impute))
+    #
+    #
+    #
+    #     if args.oracle_impute:
+    #         print("main")
+    #         print(sampled_indices)
+    #         # compute a pass over all points
+    #         uncertainties = []
+    #         index_order = [None for _ in range(args.num_images)]
+    #
+    #         # torch.ones((args.num_images))
+    #
+    #         # [1 for i in range(args.num_images)] # we have so many points to label, in total. we should investigate that if we select a number than, the length is unchanged?
+    #
+    #         # get the length. But also get the maximum element. Most likely, the length of the unlabelled dataloader does not change.
+    #
+    #         with torch.no_grad():
+    #             for i, pt in enumerate(unlabeled_dataloader):
+    #                 pred = task_model(pt[0].to(args.device))
+    #                 uncertainties.append(1 - pred.max().item())
+    #                 index_order[pt[2].item()] = i
+    #
+    #                 # uncertainties[pt[2].item()] = 1 - pred.max().item() # we need to compute the loss! (or we can just take the max uncertainty..)
+    #
+    #         # uncertainties can range from 0 to 1. We want to take the maximum value
+    #         # it might be the case that model is perfectly confident. this means that we will have 0. that is ok. it doesn't make sense if we have 1
+    #
+    #         # HOW IS IT POSSIBLE WE HAVE 0 AS THE MAX
+    #         # AND HOW IS IT POSSIBLE WE DONT EVEN HAVE THE SAME SAMPLED INDICE AS WHAT THE OTHER RETURNS
+    #         # uncertainties = [elt for elt in uncertainties if elt is not None]
+    #         # ensure that the uncertainties return here are indeed accurate
+    #         # they wont actually line up unfortunately...
+    #         print("uncertainty vs sampled index")
+    #         print(uncertainties.index(max(uncertainties)), max(uncertainties))
+    #         print(index_order[sampled_indices[0]], uncertainties[index_order[sampled_indices[
+    #             0]]])  # but it might be possible, that this quantity is not computed...no. it MUST be computed, since it is unlabelled
+    #
+    #         # we only multiply by -1 at the end (to select the elemnts which are furtherst)
+    #         # for i in range(len(uncertainties)):
+    #         #     uncertainties[i] = 1 - uncertainties[i]
+    #
+    #         # print(sampled_indices)
+    #         # unlabeled_dataloader.dataset[sampled_indices]
+    #         best_data_point, max_acc, accs = oracle_best_point(unlabeled_dataloader, current_indices.copy(),
+    #                                                            train_dataset, solver, args, sampled_indices,
+    #                                                            index_order,
+    #                                                            uncertainties)  # since we might have an elt with index being 2.5k, then it would mess it all up.
+    #         # hence, a hash based approach IS best!
+    #         #
+    #         #
+    #         print(sampled_indices, accs[index_order[sampled_indices.item()]])
+    #         print(best_data_point, max_acc)
+    #         #
+    #         if best_data_point == sampled_indices[0]:
+    #             total_optimal += 1
+    #             print(max_acc)  # this should be optimal
+    #             # print()
+    #         torch.save(accs, os.path.join(args.out_path, "accs_{}".format(split) + ".txt"))
+    #         torch.save(uncertainties, os.path.join(args.out_path, "uncertainties_{}".format(split) + ".txt"))
+    #         uncertainty_acc_plot(uncertainties, accs, args, split, sampled_indices, index_order)
+    #
+    #     with open(os.path.join(args.out_path, "current_accs.txt"), "a") as acc_file:
+    #         acc_file.write("{}\n".format(acc))
+    #
+    #     #
+    #     query_analysis(sampled_indices, unlabeled_dataloader, args, split)
+    #
+    #     # current_indices = list(current_indices) + [best_data_point] #really they just want a set here...
+    #     current_indices = list(current_indices) + list(sampled_indices)  # really they just want a set here...
+    #
+    #     sampler = data.sampler.SubsetRandomSampler(current_indices)
+    #     train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+    #                                        batch_size=args.batch_size, drop_last=False)
+    #
+    #     # break
+    #
+    # acc_plot(accuracies, args)
+    # print("In total, we had {} out of 100 optimal".format(total_optimal))
+    #
+    # torch.save(accuracies, os.path.join(args.out_path, args.log_name + ".txt"))
 
 def main(args):
 
@@ -396,7 +422,7 @@ def main(args):
         raise NotImplementedError
 
     random.seed("csc2547")
-    torch.manual_seed("0")
+    torch.manual_seed(0)
 
     all_indices = set(np.arange(args.num_images))
     initial_indices = random.sample(all_indices, args.initial_budget)
@@ -722,5 +748,5 @@ if __name__ == '__main__':
     else:
         args.device = torch.device('cpu')
 
-    main(args)
-
+    # main(args)
+    rl_main(args)
