@@ -78,6 +78,92 @@ def get_query(action, unlabelled_dataset):
 
     pass
 
+'''
+
+
+
+'''
+def random_baseline(args, num_iters=100):
+
+
+
+    # runs a random baseline
+
+
+    if args.dataset == "ring":
+        print("Using Ring dataset...")
+        test_dataloader = data.DataLoader(
+            Ring(args.data_path, transform=simple_data_transformer(), return_idx=False, testset=True),
+            batch_size=args.batch_size, drop_last=False
+        )
+
+        train_dataset = Ring(args.data_path, simple_data_transformer())
+        print(len(train_dataset))
+        args.num_images = 2500
+        args.budget = 1 #how many we can label at each round
+        args.initial_budget = 1
+        args.num_classes = 5
+
+
+    random.seed("csc2547")
+    torch.manual_seed(0)
+    solver = Solver(args, test_dataloader)
+
+    all_indices = set(np.arange(args.num_images))
+    initial_indices = random.sample(all_indices, args.initial_budget)
+    sampler = data.sampler.SubsetRandomSampler(initial_indices)
+    current_indices = list(initial_indices)
+
+    unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
+
+    # dataset with labels available
+    train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+                                       batch_size=args.batch_size, drop_last=False)
+    accuracies = []
+
+    for i in range(num_iters):
+        task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
+
+        unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
+
+
+        unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
+        unlabeled_dataloader = data.DataLoader(train_dataset,
+                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
+
+
+        if args.sampling_method == "adversary" or args.sampling_method == "adversary_1c":
+            # train the models on the current data
+            # we also want to check which sampled_indice is best, and which one should be ideal, according to the dataset!
+            acc, vae, discriminator = solver.train(train_dataloader,
+                                                task_model,
+                                                vae,
+                                                discriminator,
+                                                unlabeled_dataloader)
+        else:
+            # train the models on the current data
+            acc,_,_,class_acc = solver.train_without_adv_vae(train_dataloader,
+                                                task_model,
+                                                None,
+                                                None,
+                                                None, args)
+
+
+
+
+        print('Final accuracy with {}% of data is: {:.2f}'.format(int(i), acc))
+        accuracies.append(acc)
+
+        sampled_indices = np.random.choice(unlabeled_indices)
+        current_indices = list(current_indices) + [sampled_indices] #really they just want a set here...
+
+        sampler = data.sampler.SubsetRandomSampler(current_indices)
+        train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+                batch_size=args.batch_size, drop_last=False)
+
+    return accuracies
+
+
 def rl_main(args):
     with open(os.path.join(args.out_path, "args.txt"), "w") as file:
 
@@ -142,6 +228,10 @@ def rl_main(args):
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
     '''
 
+
+    # run the random-baseline first
+    random_accs = random_baseline(args, args.num_episodes)
+
     accuracies = []
     criterion = torch.nn.CrossEntropyLoss()
     for i in tqdm(range(args.num_episodes)):
@@ -189,11 +279,21 @@ def rl_main(args):
         loss *= reward
         loss.backward()
         pol_optimizer.step()
+
+
         print(curr_state)
         print(acc)
 
+
     print(pol_class_net)
-    acc_plot(accuracies, args)
+
+    fig, ax =    acc_plot(accuracies, args, label="policy gradient")
+    ax.plot(range(0, len(random_accs)), random_accs, marker="o", c="red", label="random")
+    ax.legend()
+    fig.show()
+    fig.savefig(os.path.join(args.out_path, "comparison_acc_plot_{}_queries".format(len(accuracies))))
+
+    # try comparing vs a regularly trained network (random sampling)
 
     # now that the policy network is trained, we can use it to actually do the inference
 
@@ -662,17 +762,17 @@ def oracle_best_point( unlabeled_dataloader, orig_indices, train_dataset , solve
 
 
 
-def acc_plot(accs, args):
+def acc_plot(accs, args, label="uncertainty"):
     import matplotlib.pyplot as plt
     fig,ax =plt.subplots()
-    ax.plot(range(0, len(accs)), accs, marker="x")
+    ax.plot(range(0, len(accs)), accs, marker="x", label=label)
     ax.set_title("Accuracy vs query; {} train iterations".format(args.train_iterations))
     ax.set_ylabel("accuracy")
     ax.set_xlabel("queries")
 
     fig.show()
     fig.savefig(os.path.join(args.out_path,"acc_plot_{}_queries".format(len(accs))))
-
+    return fig, ax
 
 def uncertainty_acc_plot(uncertainties, accs, args, split,sampled_indices, index_order):
     import matplotlib.pyplot as plt
