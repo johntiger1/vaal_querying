@@ -1,1 +1,1 @@
-srun --gres=gpu:1 --mem=12G -p gpu --unbuffered  python main.py --dataset ring --cuda --train_iterations 800 --batch_size 16 --sampling_method random --log_name batch_size_1 --out_path random
+srun --gres=gpu:1 --mem=16G -p gpu --unbuffered  python main.py --dataset ring --cuda --train_iterations 800 --batch_size 1 --sampling_method expected_error --log_name bs16 --out_path set2/test_1
