@@ -36,11 +36,11 @@ def environment_step(train_dataloader, solver, task_model):
                                                            None,
                                                            None,
                                                            None, args)
-
-    return acc, class_accs.unsqueeze(0)
+    counts, total = dataloader_statistics(train_dataloader, 5)
+    return acc, torch.cat((class_accs.unsqueeze(0), counts.t()), axis=1)
 
 def compute_reward(curr_state, time_step):
-    class_acc = curr_state
+    class_acc = curr_state[:,0:5].detach()
     baseline = 20 + 0.8*time_step
 
     # choices: we can try to achieve parity. Or we can try and just maximize the total acc across everything
@@ -48,9 +48,9 @@ def compute_reward(curr_state, time_step):
     # return torch.sum(curr_state-baseline) #equiv to acc.
 
     # try some torch sum stuff. sum of squared differences for instance
-    perf = (curr_state-baseline)
+    perf = (class_acc-baseline)
 
-    return -torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
+    # return -torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
 
     return torch.mean(perf)
 
@@ -340,12 +340,12 @@ def rl_main(args):
     ACTION_SPACE = args.num_classes
     CLASS_DIST_SPACE = args.num_classes
 
-    pol_class_net = PolicyNet(STATE_SPACE , ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
+    pol_class_net = PolicyNet(STATE_SPACE + CLASS_DIST_SPACE, ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
     pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-3)
     args.num_episodes = 100
 
 
-    curr_state = torch.zeros((1,STATE_SPACE)) #only feed it in the past state directly
+    curr_state = torch.zeros((1,STATE_SPACE + CLASS_DIST_SPACE)) #only feed it in the past state directly
 
     import copy
 
@@ -377,11 +377,18 @@ def rl_main(args):
     unlabelled_dataset = np.concatenate((X, np.expand_dims(cluster_preds,axis=1)), axis=1)
 
 
-    args.rl_batch_steps = 10
-    gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=True) # accumulate all the losses
+    args.rl_batch_steps = 1
+
+    gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
+
+    # try making it an empty thing
+    gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
+
+    # loss.backward(0 => doesn't actually execute an update of the weights. we could probably call loss.backward individually
+
     batched_accs = []
 
-    args.epsilon = 1
+    args.epsilon = 0
 
     # try combining it with the state. and also, just try doing an epsilon greedy policy
 
@@ -420,8 +427,10 @@ def rl_main(args):
         unlabeled_dataloader = data.DataLoader(train_dataset,
                                                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
+        class_counts, total = dataloader_statistics(train_dataloader, args.num_classes)
+        print(class_counts)
 
-        print(dataloader_statistics(train_dataloader, args.num_classes))
+
 
         #data loader not subscriptable => we should deal with the indices.
         # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
@@ -432,22 +441,28 @@ def rl_main(args):
         acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
         accuracies.append(acc)
 
-
+        # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
         if not rand:
             reward = compute_reward(curr_state, i) # basline is around 1% improvement
-            loss *= reward
+            loss *= reward # calling loss backwards here works
 
             gradient_accum[i% args.rl_batch_steps] = loss
 
-        if i!= 0 and i % args.rl_batch_steps==0:
+            # tess = torch.mean(gradient_accum)
+            # print('tess')
+            # print(tess)
+            # tess.backward()
+
+        if i % args.rl_batch_steps==0:
             print("the loss is")
             print(gradient_accum)
             # gradient_accum = torch.clamp(gradient_accum, -10, 10)
-            loss = torch.mean(gradient_accum, dim=0)
+            # torch.mean(gradient_accum, dim=0).backward()
+            abc = torch.mean(gradient_accum, dim=0)
             print(loss)
-            loss.backward()
+            abc.backward()
             pol_optimizer.step()
-            gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=True)  # accumulate all the losses
+            gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False)  # accumulate all the losses
             batched_accs.append(acc)
 
             # now on the next step, you want to run some gradient and see how it goes. and only graph that. Equivalently,
@@ -465,8 +480,8 @@ def rl_main(args):
         print(curr_state)
         print(acc)
 
-        with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
-            acc_file.write("{} {}\n".format(acc, curr_state))
+        # with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
+        #     acc_file.write("{} {}\n".format(acc, class_accs))
 
         # inference_model = task_model
         # inference_model.to(args.device)
@@ -680,8 +695,8 @@ def main(args):
         args.num_images = 2500
         args.budget = 1 #how many we can label at each round
         args.initial_budget = 1
-        args.num_classes = 5 
-    
+        args.num_classes = 5
+
     elif args.dataset == 'mnist':
         test_dataloader = data.DataLoader(
                 datasets.MNIST(args.path, download=True, transform=mnist_transformer(), train=False),
@@ -782,7 +797,7 @@ def main(args):
 
 
         unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
-        unlabeled_dataloader = data.DataLoader(train_dataset, 
+        unlabeled_dataloader = data.DataLoader(train_dataset,
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
         print(len(unlabeled_dataloader))
 
@@ -793,15 +808,15 @@ def main(args):
             # train the models on the current data
             # we also want to check which sampled_indice is best, and which one should be ideal, according to the dataset!
             acc, vae, discriminator = solver.train(train_dataloader,
-                                                task_model, 
-                                                vae, 
+                                                task_model,
+                                                vae,
                                                 discriminator,
                                                 unlabeled_dataloader)
         else:
             # train the models on the current data
             acc, vae, discriminator,class_acc = solver.train_without_adv_vae(train_dataloader,
-                                                task_model, 
-                                                vae, 
+                                                task_model,
+                                                vae,
                                                 discriminator,
                                                 unlabeled_dataloader, args)
 
