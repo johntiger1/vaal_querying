@@ -458,9 +458,9 @@ def rl_main(args):
             print(gradient_accum)
             # gradient_accum = torch.clamp(gradient_accum, -10, 10)
             # torch.mean(gradient_accum, dim=0).backward()
-            abc = torch.mean(gradient_accum, dim=0)
-            print(loss)
-            abc.backward()
+            batched_loss = torch.mean(gradient_accum, dim=0)
+            print(batched_loss )
+            batched_loss.backward()
             pol_optimizer.step()
             gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False)  # accumulate all the losses
             batched_accs.append(acc)
