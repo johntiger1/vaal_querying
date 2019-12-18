@@ -287,6 +287,14 @@ def dataloader_statistics(train_dataloader, num_classes):
 
 
 def rl_main(args):
+
+    args.rl_batch_steps = 10
+    args.num_episodes = 100
+
+    args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+
+    # probably starting with 10 or so points randomly would be very good. but would invalidate past work
+
     with open(os.path.join(args.out_path, "args.txt"), "w") as file:
 
         for key,val in vars(args).items():
@@ -342,7 +350,6 @@ def rl_main(args):
 
     pol_class_net = PolicyNet(STATE_SPACE + CLASS_DIST_SPACE, ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
     pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-3)
-    args.num_episodes = 100
 
 
     curr_state = torch.zeros((1,STATE_SPACE + CLASS_DIST_SPACE)) #only feed it in the past state directly
@@ -377,7 +384,6 @@ def rl_main(args):
     unlabelled_dataset = np.concatenate((X, np.expand_dims(cluster_preds,axis=1)), axis=1)
 
 
-    args.rl_batch_steps = 10
 
     gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
 
@@ -388,7 +394,6 @@ def rl_main(args):
 
     batched_accs = []
 
-    args.epsilon = 0
 
     # try combining it with the state. and also, just try doing an epsilon greedy policy
 
@@ -456,6 +461,7 @@ def rl_main(args):
         if i!= 0 and i % args.rl_batch_steps==0:
             print("the loss is")
             print(gradient_accum)
+            gradient_accum = gradient_accum[gradient_accum.nonzero()] #filter out the points where we took the epsilon policy
             # gradient_accum = torch.clamp(gradient_accum, -10, 10)
             # torch.mean(gradient_accum, dim=0).backward()
             batched_loss = torch.mean(gradient_accum, dim=0)
