@@ -338,7 +338,7 @@ def rl_main(args):
     '''
     STATE_SPACE = args.num_classes
     ACTION_SPACE = args.num_classes
-
+    CLASS_DIST_SPACE = args.num_classes
 
     pol_class_net = PolicyNet(STATE_SPACE , ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
     pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-3)
@@ -378,7 +378,7 @@ def rl_main(args):
 
 
     args.rl_batch_steps = 10
-    gradient_accum = torch.zeros((args.rl_batch_steps, 1)) # accumulate all the losses
+    gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=True) # accumulate all the losses
     batched_accs = []
 
     args.epsilon = 1
@@ -447,7 +447,7 @@ def rl_main(args):
             print(loss)
             loss.backward()
             pol_optimizer.step()
-            gradient_accum = torch.zeros((args.rl_batch_steps, 1))  # accumulate all the losses
+            gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=True)  # accumulate all the losses
             batched_accs.append(acc)
 
             # now on the next step, you want to run some gradient and see how it goes. and only graph that. Equivalently,
