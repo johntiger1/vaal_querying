@@ -49,7 +49,8 @@ def compute_reward(curr_state, time_step):
 
     # try some torch sum stuff. sum of squared differences for instance
     perf = (class_acc-baseline)
-
+    print("perf is")
+    print(torch.mean(perf))
     # return -torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
 
     return torch.mean(perf)
@@ -291,7 +292,7 @@ def rl_main(args):
     args.rl_batch_steps = 10
     args.num_episodes = 100
 
-    args.epsilon = 0.5 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -449,7 +450,9 @@ def rl_main(args):
         # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
         if not rand:
             reward = compute_reward(curr_state, i) # basline is around 1% improvement
-            loss *= reward # calling loss backwards here works
+            print("log loss is")
+            print(loss)
+            loss += reward # calling loss backwards here works
 
             gradient_accum[i% args.rl_batch_steps] = loss
 
@@ -463,20 +466,31 @@ def rl_main(args):
 
             print("the loss is")
             print(gradient_accum)
+
+
+
             gradient_accum = gradient_accum[gradient_accum.nonzero()] #filter out the points where we took the epsilon policy
+
+            print(gradient_accum)
             # gradient_accum = torch.clamp(gradient_accum, -10, 10)
             # torch.mean(gradient_accum, dim=0).backward()
-            batched_loss = torch.mean(gradient_accum, dim=0)
-            print(batched_loss )
-            batched_loss.backward()
-            pol_optimizer.step()
+            if len(gradient_accum) > 0:
+                batched_loss = torch.mean(gradient_accum, dim=0)
+                print(batched_loss )
+                batched_loss.backward()
+
+
+                pol_optimizer.step()
+
+            # print(list(pol_class_net.parameters())[0].grad )
+
             gradient_accum = torch.zeros((args.rl_batch_steps), requires_grad=False)  # accumulate all the losses
             batched_accs.append(acc)
 
             # now on the next step, you want to run some gradient and see how it goes. and only graph that. Equivalently,
             # just graph every 10th datapoint
 
-            args.epsilon *= 0.9
+            # args.epsilon *= 0.6
              #perform the gradient update
         #     compute the reward. store the gradients
         # store all the gradients, then torch.mean them, and then take a step. This means we only have 10/50 steps.
