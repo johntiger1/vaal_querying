@@ -37,7 +37,7 @@ def environment_step(train_dataloader, solver, task_model):
                                                            None,
                                                            None, args)
 
-    return acc, class_accs.unsqueeze(0)
+    return acc, class_accs.unsqueeze(0), class_accs.unsqueeze(0)
 
 def compute_reward(curr_state, time_step):
     class_acc = curr_state
@@ -50,7 +50,7 @@ def compute_reward(curr_state, time_step):
     # try some torch sum stuff. sum of squared differences for instance
     perf = (curr_state-baseline)
 
-    return -torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
+    # return -torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
 
     return torch.mean(perf)
 
@@ -277,7 +277,7 @@ Computes the per-class statistics for the datapoints in the dataloader
 '''
 def dataloader_statistics(train_dataloader, num_classes):
 
-    per_class = torch.zeros((num_classes, 1))
+    per_class = torch.zeros((num_classes, 1), requires_grad=True)
 
     for datapoint, label, idx in train_dataloader:
         for dp, lb, _ in zip(datapoint, label, idx):
@@ -345,7 +345,7 @@ def rl_main(args):
     args.num_episodes = 100
 
 
-    curr_state = torch.zeros((1,STATE_SPACE)) #only feed it in the past state directly
+    curr_state = torch.zeros((1,STATE_SPACE ), requires_grad=True) #only feed it in the past state directly
 
     import copy
 
@@ -381,7 +381,7 @@ def rl_main(args):
     gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=True) # accumulate all the losses
     batched_accs = []
 
-    args.epsilon = 1
+    args.epsilon = 0
 
     # try combining it with the state. and also, just try doing an epsilon greedy policy
 
@@ -420,8 +420,10 @@ def rl_main(args):
         unlabeled_dataloader = data.DataLoader(train_dataset,
                                                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
+        # class_counts, total = dataloader_statistics(train_dataloader, args.num_classes)
+        # print(class_counts)
 
-        print(dataloader_statistics(train_dataloader, args.num_classes))
+
 
         #data loader not subscriptable => we should deal with the indices.
         # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
@@ -429,17 +431,18 @@ def rl_main(args):
         # print(correct_label)
         print(action)
 
-        acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
+        acc, curr_state_accs, class_accs= environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
         accuracies.append(acc)
 
-
+        # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
+        curr_state = curr_state_accs
         if not rand:
-            reward = compute_reward(curr_state, i) # basline is around 1% improvement
+            reward = compute_reward(class_accs, i) # basline is around 1% improvement
             loss *= reward
 
             gradient_accum[i% args.rl_batch_steps] = loss
 
-        if i!= 0 and i % args.rl_batch_steps==0:
+        if i % args.rl_batch_steps==0:
             print("the loss is")
             print(gradient_accum)
             # gradient_accum = torch.clamp(gradient_accum, -10, 10)
@@ -466,7 +469,7 @@ def rl_main(args):
         print(acc)
 
         with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
-            acc_file.write("{} {}\n".format(acc, curr_state))
+            acc_file.write("{} {}\n".format(acc, class_accs))
 
         # inference_model = task_model
         # inference_model.to(args.device)
