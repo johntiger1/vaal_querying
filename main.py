@@ -50,6 +50,8 @@ def compute_reward(curr_state, time_step):
     # try some torch sum stuff. sum of squared differences for instance
     perf = (curr_state-baseline)
 
+    return -torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
+
     return torch.mean(perf)
 
     # construct a sign vector
@@ -132,7 +134,16 @@ args:
 
 def get_query_via_kmeans(action, unlabelled_data, args):
 
-    targ_class = action.sample()
+
+    rand = False
+    if torch.rand(size=()) < args.epsilon:
+        rand = True
+        rand_idx = torch.randint(len(unlabelled_data), size=())
+        datapoint = (unlabelled_data[rand_idx, 0:2], unlabelled_data[rand_idx, 2], unlabelled_data[rand_idx, 3])
+        unlabelled_data = np.delete(unlabelled_data, rand_idx, 0)  # test to make sure this works
+        return unlabelled_data[rand_idx][-1], datapoint, unlabelled_data,rand
+
+    targ_cluster = action.sample()
 
 
     iters = 0
@@ -141,14 +152,14 @@ def get_query_via_kmeans(action, unlabelled_data, args):
         rand_idx = torch.randint(len(unlabelled_data), size=())
 
         # we assume the kmeans is appended right at the very end
-        if unlabelled_data[rand_idx][-1] == targ_class:
+        if unlabelled_data[rand_idx][-1] == targ_cluster:
             datapoint = (unlabelled_data[rand_idx,0:2], unlabelled_data[rand_idx,2], unlabelled_data[rand_idx,3])
             unlabelled_data = np.delete(unlabelled_data, rand_idx, 0 ) # test to make sure this works
             break
 
         iters+=1
 
-    return targ_class, datapoint, unlabelled_data
+    return targ_cluster, datapoint, unlabelled_data, rand
     # now, we just keep track of the indices
     # now, we just need to sample the class
 
@@ -369,6 +380,11 @@ def rl_main(args):
     args.rl_batch_steps = 10
     gradient_accum = torch.zeros((args.rl_batch_steps, 1)) # accumulate all the losses
     batched_accs = []
+
+    args.epsilon = 1
+
+    # try combining it with the state. and also, just try doing an epsilon greedy policy
+
     for i in tqdm(range(args.num_episodes)):
         pol_optimizer.zero_grad()
 
@@ -379,13 +395,16 @@ def rl_main(args):
         action_dist = torch.distributions.Categorical(torch.nn.functional.softmax(action_vector)) #the diff between Softmax and softmax
         print(action_dist.probs)
 
+        # if torch.rand() < args.epsilon:
+        #     pass
+        # else:
         # correct_label1, action1 = get_query(action_dist, unlabeled_dataloader, inference_model, args)
-        correct_label, action, unlabelled_dataset = get_query_via_kmeans(action_dist, unlabelled_dataset, args)
+        correct_label, action, unlabelled_dataset, rand = get_query_via_kmeans(action_dist, unlabelled_dataset, args)
 
-
-        pred_vector = action_vector.view(1,-1)
-        correct_label = correct_label
-        loss = criterion (pred_vector, correct_label)
+        if not rand:
+            pred_vector = action_vector.view(1,-1)
+            correct_label = correct_label
+            loss = criterion (pred_vector, correct_label)
 
 
 
@@ -414,11 +433,11 @@ def rl_main(args):
         accuracies.append(acc)
 
 
+        if not rand:
+            reward = compute_reward(curr_state, i) # basline is around 1% improvement
+            loss *= reward
 
-        reward = compute_reward(curr_state, i) # basline is around 1% improvement
-        loss *= reward
-
-        gradient_accum[i% args.rl_batch_steps] = loss
+            gradient_accum[i% args.rl_batch_steps] = loss
 
         if i!= 0 and i % args.rl_batch_steps==0:
             print("the loss is")
