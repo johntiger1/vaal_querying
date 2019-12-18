@@ -377,7 +377,7 @@ def rl_main(args):
     unlabelled_dataset = np.concatenate((X, np.expand_dims(cluster_preds,axis=1)), axis=1)
 
 
-    args.rl_batch_steps = 1
+    args.rl_batch_steps = 10
 
     gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
 
@@ -453,7 +453,7 @@ def rl_main(args):
             # print(tess)
             # tess.backward()
 
-        if i % args.rl_batch_steps==0:
+        if i!= 0 and i % args.rl_batch_steps==0:
             print("the loss is")
             print(gradient_accum)
             # gradient_accum = torch.clamp(gradient_accum, -10, 10)
