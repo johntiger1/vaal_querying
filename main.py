@@ -291,7 +291,7 @@ def rl_main(args):
     args.rl_batch_steps = 10
     args.num_episodes = 100
 
-    args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.5 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -388,7 +388,7 @@ def rl_main(args):
     gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
 
     # try making it an empty thing
-    gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
+    gradient_accum = torch.zeros((args.rl_batch_steps), requires_grad=False) # accumulate all the losses
 
     # loss.backward(0 => doesn't actually execute an update of the weights. we could probably call loss.backward individually
 
@@ -458,7 +458,9 @@ def rl_main(args):
             # print(tess)
             # tess.backward()
 
-        if i!= 0 and i % args.rl_batch_steps==0:
+        if i % args.rl_batch_steps==0:
+
+
             print("the loss is")
             print(gradient_accum)
             gradient_accum = gradient_accum[gradient_accum.nonzero()] #filter out the points where we took the epsilon policy
@@ -468,13 +470,13 @@ def rl_main(args):
             print(batched_loss )
             batched_loss.backward()
             pol_optimizer.step()
-            gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False)  # accumulate all the losses
+            gradient_accum = torch.zeros((args.rl_batch_steps), requires_grad=False)  # accumulate all the losses
             batched_accs.append(acc)
 
             # now on the next step, you want to run some gradient and see how it goes. and only graph that. Equivalently,
             # just graph every 10th datapoint
 
-
+            args.epsilon *= 0.9
              #perform the gradient update
         #     compute the reward. store the gradients
         # store all the gradients, then torch.mean them, and then take a step. This means we only have 10/50 steps.
@@ -500,7 +502,7 @@ def rl_main(args):
     ax.plot(spaced_x, batched_accs, marker="x", c="purple", label="batched policy updates")
     ax.legend()
     fig.show()
-    fig.savefig(os.path.join(args.out_path, "comparison_batcged_acc_plot_{}_queries".format(len(accuracies))))
+    fig.savefig(os.path.join(args.out_path, "comparison_batched_acc_plot_{}_queries".format(len(accuracies))))
 
 
     print(pol_class_net)
