@@ -45,7 +45,31 @@ def compute_reward(curr_state, time_step):
 
     # choices: we can try to achieve parity. Or we can try and just maximize the total acc across everything
 
-    return torch.sum(curr_state-baseline) #equiv to acc.
+    # return torch.sum(curr_state-baseline) #equiv to acc.
+
+    # try some torch sum stuff. sum of squared differences for instance
+    perf = (curr_state-baseline)
+
+    return torch.sum(perf)
+
+    # construct a sign vector
+
+
+    return torch.sum(torch.clamp((class_acc - baseline),min=0, max=100) ** 2)
+
+    print("current performance is ")
+    print(perf)
+
+    perf_matrix = perf - perf.t() #broadcasting
+    return torch.mean(perf_matrix.pow(2))/2 # compute the sum across, and divide by 2
+
+
+    # sum along the diagonal etc. perf_matrix
+
+
+    torch.sum()
+
+
     # trying sum of squared errors
     return torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
 
@@ -297,8 +321,8 @@ def rl_main(args):
     import copy
 
     task_model = model.FCNet(num_classes=args.num_classes)
-    inference_model = task_model
-    inference_model.to(args.device)
+    # inference_model = task_model
+    # inference_model.to(args.device)
 
     accuracies = []
     criterion = torch.nn.CrossEntropyLoss()
@@ -322,6 +346,11 @@ def rl_main(args):
     cluster_preds = KMeans(n_clusters=ACTION_SPACE, random_state=0).fit_predict(X)  # we can also fit one kmeans at the very start.
     # we can also just predict (should be fast) again on new datapoints, using the trained classifier. But why not just memorize
     unlabelled_dataset = np.concatenate((X, np.expand_dims(cluster_preds,axis=1)), axis=1)
+
+
+    args.rl_batch_steps = 10
+    gradient_accum = torch.zeros((args.rl_batch_steps, 1)) # accumulate all the losses
+    batched_accs = []
     for i in tqdm(range(args.num_episodes)):
         pol_optimizer.zero_grad()
 
@@ -338,7 +367,7 @@ def rl_main(args):
 
         pred_vector = action_vector.view(1,-1)
         correct_label = correct_label
-        loss =criterion (pred_vector, correct_label)
+        loss = criterion (pred_vector, correct_label)
 
 
 
@@ -363,15 +392,34 @@ def rl_main(args):
         acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
         accuracies.append(acc)
 
-        # if i % args.rl_batch==0:
-        #     torch.stack()
-        #     compute the reward. store the gradients
-        # store all the gradients, then torch.mean them, and then take a step. This means we only have 10/50 steps.
+
 
         reward = compute_reward(curr_state, i) # basline is around 1% improvement
         loss *= reward
-        loss.backward()
-        pol_optimizer.step()
+
+        gradient_accum[i% args.rl_batch_steps] = loss
+
+        if i!= 0 and i % args.rl_batch_steps==0:
+            print("the loss is")
+            print(gradient_accum)
+            # gradient_accum = torch.clamp(gradient_accum, -10, 10)
+            loss = torch.mean(gradient_accum, dim=0)
+            print(loss)
+            loss.backward()
+            pol_optimizer.step()
+            gradient_accum = torch.zeros((args.rl_batch_steps, 1))  # accumulate all the losses
+            batched_accs.append(acc)
+
+            # now on the next step, you want to run some gradient and see how it goes. and only graph that. Equivalently,
+            # just graph every 10th datapoint
+
+
+             #perform the gradient update
+        #     compute the reward. store the gradients
+        # store all the gradients, then torch.mean them, and then take a step. This means we only have 10/50 steps.
+
+        # loss.backward()
+        # pol_optimizer.step()
 
 
         print(curr_state)
@@ -380,11 +428,19 @@ def rl_main(args):
         with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
             acc_file.write("{} {}\n".format(acc, curr_state))
 
-        inference_model = task_model
-        inference_model.to(args.device)
+        # inference_model = task_model
+        # inference_model.to(args.device)
         task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
 
-    acc_plot(accuracies, args, label="policy gradient", name="policy gradient only")
+    fig, ax = acc_plot(accuracies, args, label="policy gradient", name="policy gradient only")
+
+    spaced_x = list(range(len(batched_accs)))
+    spaced_x = [x*10 for x in spaced_x]
+    ax.plot(spaced_x, batched_accs, marker="x", c="purple", label="batched policy updates")
+    ax.legend()
+    fig.show()
+    fig.savefig(os.path.join(args.out_path, "comparison_batcged_acc_plot_{}_queries".format(len(accuracies))))
+
 
     print(pol_class_net)
 
@@ -1015,5 +1071,5 @@ if __name__ == '__main__':
     else:
         args.device = torch.device('cpu')
 
-    # main(args)
-    rl_main(args)
+    main(args)
+    # rl_main(args)
