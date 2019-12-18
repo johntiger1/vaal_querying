@@ -50,7 +50,7 @@ def compute_reward(curr_state, time_step):
     # try some torch sum stuff. sum of squared differences for instance
     perf = (curr_state-baseline)
 
-    return torch.sum(perf)
+    return torch.mean(perf)
 
     # construct a sign vector
 
@@ -261,6 +261,20 @@ def random_baseline(args, num_iters=100):
     return accuracies
 
 
+'''
+Computes the per-class statistics for the datapoints in the dataloader
+'''
+def dataloader_statistics(train_dataloader, num_classes):
+
+    per_class = torch.zeros((num_classes, 1))
+
+    for datapoint, label, idx in train_dataloader:
+        for dp, lb, _ in zip(datapoint, label, idx):
+            per_class[lb] += 1
+
+    return per_class, torch.sum(per_class)
+
+
 def rl_main(args):
     with open(os.path.join(args.out_path, "args.txt"), "w") as file:
 
@@ -303,6 +317,10 @@ def rl_main(args):
     # dataset with labels available
     train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                                        batch_size=args.batch_size, drop_last=False)
+
+
+    # iterate the train_dataloader, and compute some statistics. And also, increment quantities.
+
 
     '''
     FORMULATION1: We will feed in the class_specific accuracies.
@@ -382,6 +400,9 @@ def rl_main(args):
         unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
         unlabeled_dataloader = data.DataLoader(train_dataset,
                                                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
+
+
+        print(dataloader_statistics(train_dataloader, args.num_classes))
 
         #data loader not subscriptable => we should deal with the indices.
         # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
@@ -1071,5 +1092,5 @@ if __name__ == '__main__':
     else:
         args.device = torch.device('cpu')
 
-    main(args)
-    # rl_main(args)
+    # main(args)
+    rl_main(args)
