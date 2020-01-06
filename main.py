@@ -253,8 +253,12 @@ def random_baseline(args, num_iters=100):
         inquiry_dataloader = data.DataLoader(train_dataset, sampler=inquiry_sampler ,
                 batch_size=args.batch_size, drop_last=False)
 
-        for elt in inquiry_dataloader:
-            print(elt)
+        new_datapoints_batch = np.zeros((0,3))
+
+        for datapoint_batch, label_batch, _ in  inquiry_dataloader:
+            train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch, axis=1)), axis=1)
+            new_datapoints_batch = np.concatenate((new_datapoints_batch, train_ex_batch), axis=0)  # concat the
+
 
 
         print(sampled_indices)
@@ -268,7 +272,13 @@ def random_baseline(args, num_iters=100):
         with open(os.path.join(args.out_path, "{}_current_accs.txt".format(args.sampling_method)), "a") as acc_file:
             acc_file.write("{} {}\n".format(acc, class_acc))
 
+        visual_labelled_dataset = np.zeros((0, 3))  # each dimension does not require something new!
 
+        for datapoint_batch, label_batch, _ in train_dataloader:  # will be tuple of n by 1
+            train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch, axis=1)), axis=1)
+            visual_labelled_dataset = np.concatenate((visual_labelled_dataset, train_ex_batch), axis=0)  # concat the
+
+        visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints_batch)
 
     return accuracies
 
@@ -286,6 +296,26 @@ def dataloader_statistics(train_dataloader, num_classes):
 
     return per_class, torch.sum(per_class)
 
+'''
+new datapoints is a numpy array, n by D+1 (D for the features, 1 for the class)
+'''
+def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoints):
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+
+    for cluster in range(num_classes):
+        # k_means_data  = unlabelled_dataset[unlabelled_dataset[...,-1]==cluster]
+        # fig, ax = plt.subplots()
+
+        k_means_data  = prev_dataset[prev_dataset[:,-1]==cluster]
+
+        ax.scatter(k_means_data  [:,0], k_means_data  [:,1])
+        # break
+
+    ax.scatter(new_datapoints[:,0],new_datapoints[:,1], s=100)
+    fig.savefig(os.path.join(args.out_path, "viz_{}".format(iteration)))
+
+    fig.show()
 
 def rl_main(args):
 
@@ -340,6 +370,7 @@ def rl_main(args):
 
 
     # iterate the train_dataloader, and compute some statistics. And also, increment quantities.
+
 
 
     '''
@@ -574,12 +605,12 @@ def rl_main(args):
         #     fig.savefig(os.path.join(args.out_path, "cluster_{}".format(cluster)))
         visual_labelled_dataset = np.zeros((0,3)) #each dimension does not require something new!
 
-
+        new_datapoints= np.reshape(np.asarray(action[0]), newshape=(-1,2))
         for datapoint_batch, label_batch, _ in train_dataloader: #will be tuple of n by 1
             train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch,axis=1)), axis=1)
             visual_labelled_dataset = np.concatenate((visual_labelled_dataset, train_ex_batch), axis=0 ) #concat the
 
-
+        visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints)
             #     stack all of them!
             # and furthermore, we need to do a group by on the label.
 
@@ -608,6 +639,7 @@ def rl_main(args):
 
     print(pol_class_net)
 
+    import copy
     uncertain_args = copy.deepcopy(args)
     uncertain_args.sampling_method = "uncertainty"
     uncertain_accs = random_baseline(uncertain_args, args.num_episodes)
