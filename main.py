@@ -366,7 +366,7 @@ def rl_main(args):
 
     # feel like supporting a desparate cause; might delete later
 
-    entire_loader = DataLoader(train_dataset, batch_size=len(train_dataset))
+    entire_loader = DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
 
     # ask on SO: multi item getting using pytorch, dataloader
 
@@ -380,11 +380,56 @@ def rl_main(args):
 
 
     from sklearn.cluster import KMeans
-    cluster_preds = KMeans(n_clusters=ACTION_SPACE, random_state=0).fit_predict(X)  # we can also fit one kmeans at the very start.
+    kmeans_obj = KMeans(n_clusters=5, random_state=0)  # we can also fit one kmeans at the very start.
+    cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
+
+    oracle_clusters = False
+
+    if oracle_clusters:
+        unlabelled_dataset = np.concatenate((X, labels), axis=1)
+
+    else:
     # we can also just predict (should be fast) again on new datapoints, using the trained classifier. But why not just memorize
-    unlabelled_dataset = np.concatenate((X, np.expand_dims(cluster_preds,axis=1)), axis=1)
+        unlabelled_dataset = np.concatenate((X, np.expand_dims(cluster_preds,axis=1)), axis=1)
+
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+
+    # try and predict directly in the data space?
+    # try and graph where in the dataset it does it as well.
+    # in this case, we would again need some fix of the policy gradient.
+    # we can no longer just do an easy cross entropy
+    # instead, we would be operating more in the regime of .
+    # this is a nice analysis on problems of this type!
+
+    # just about rotating and sculpting to your particular area you want
+    # ultra few shot learning with fixed dimension, horizon!
+    # contributions: to the field of meta/few shot learning using an active learning with reinforcement learning approach
+    # keep on layering intersections, until you get the particular area you want.
+    # even the approach of doing few shot learning, using active learning is pretty novel IMO
 
 
+
+
+    # we would be trying to essentially do q learning on the choice of datapoint. but make sure you pick in the data space (not action, but continuous choice of the datapoint)
+    # the key is really then, trying to do X
+    # we could literally do an entire course of lin alg during the break!
+
+    # really, digging into the problems of policy gradient
+
+    # now let's graph the unlabelled dataset
+    for cluster in range(args.num_classes):
+        # k_means_data  = unlabelled_dataset[unlabelled_dataset[...,-1]==cluster]
+        # fig, ax = plt.subplots()
+
+        k_means_data  = unlabelled_dataset[unlabelled_dataset[:,-1]==cluster]
+
+        ax.scatter(k_means_data  [:,0], k_means_data  [:,1])
+        ax.scatter(kmeans_obj.cluster_centers_[cluster][0], kmeans_obj.cluster_centers_[cluster][1], s=100)
+        fig.savefig(os.path.join(args.out_path, "cluster_{}".format(cluster)))
+        # break
+
+    fig.show()
 
     gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
 
@@ -413,6 +458,11 @@ def rl_main(args):
         # else:
         # correct_label1, action1 = get_query(action_dist, unlabeled_dataloader, inference_model, args)
         correct_label, action, unlabelled_dataset, rand = get_query_via_kmeans(action_dist, unlabelled_dataset, args)
+
+
+
+
+
 
         if not rand:
             pred_vector = action_vector.view(1,-1)
@@ -452,8 +502,8 @@ def rl_main(args):
             reward = compute_reward(curr_state, i) # basline is around 1% improvement
             print("log loss is")
             print(loss)
-            loss += reward # calling loss backwards here works
-
+            loss *= reward # calling loss backwards here works
+            loss *= -1 #
             gradient_accum[i% args.rl_batch_steps] = loss
 
             # tess = torch.mean(gradient_accum)
@@ -508,6 +558,43 @@ def rl_main(args):
         # inference_model = task_model
         # inference_model.to(args.device)
         task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
+
+        # graph the train dataloader at each iteration
+
+
+
+        # for cluster in range(args.num_classes):
+        #     # k_means_data  = unlabelled_dataset[unlabelled_dataset[...,-1]==cluster]
+        #     # fig, ax = plt.subplots()
+        #
+        #     k_means_data = unlabelled_dataset[unlabelled_dataset[:, -1] == cluster]
+        #
+        #     ax.scatter(k_means_data[:, 0], k_means_data[:, 1])
+        #     ax.scatter(kmeans_obj.cluster_centers_[cluster][0], kmeans_obj.cluster_centers_[cluster][1], s=100)
+        #     fig.savefig(os.path.join(args.out_path, "cluster_{}".format(cluster)))
+        visual_labelled_dataset = np.zeros((0,3)) #each dimension does not require something new!
+
+
+        for datapoint_batch, label_batch, _ in train_dataloader: #will be tuple of n by 1
+            train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch,axis=1)), axis=1)
+            visual_labelled_dataset = np.concatenate((visual_labelled_dataset, train_ex_batch), axis=0 ) #concat the
+
+
+            #     stack all of them!
+            # and furthermore, we need to do a group by on the label.
+
+
+
+        # now, check the visual labelled dataset
+
+
+        # let's graph the vector, as we see it come
+        # graph the new point on the map, then graph the old collection of data as regular
+
+        # current_indices
+
+
+    #
 
     fig, ax = acc_plot(accuracies, args, label="policy gradient", name="policy gradient only")
 
@@ -696,10 +783,7 @@ def rl_main(args):
 def main(args):
 
 
-    with open(os.path.join(args.out_path, "args.txt"), "w") as file:
 
-        for key,val in vars(args).items():
-            file.write("{}:{}\n".format(key,val))
 
 
 
@@ -768,6 +852,11 @@ def main(args):
     else:
         raise NotImplementedError
 
+    with open(os.path.join(args.out_path, "args.txt"), "w") as file:
+
+        for key,val in vars(args).items():
+            file.write("{}:{}\n".format(key,val))
+
     np.random.seed(2547)
     random.seed(2547)
     torch.manual_seed(args.torch_manual_seed)
@@ -784,7 +873,7 @@ def main(args):
     args.cuda = args.cuda and torch.cuda.is_available()
     solver = Solver(args, test_dataloader)
     import math
-    splits = range(int(math.ceil(100/args.budget)))
+    splits = range(int(math.ceil(100/args.budget))+1) #add 1 for extra batch size
 
     # # splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
     # splits = [args.initial_budget/float(args.num_images),
@@ -842,6 +931,10 @@ def main(args):
                                                 discriminator,
                                                 unlabeled_dataloader, args)
 
+        class_counts , total = dataloader_statistics(train_dataloader, 5)
+
+        with open(os.path.join(args.out_path, "class_counts.txt"), "a") as file:
+            file.write("{} {}\n".format(class_counts, total))
 
         print('Final accuracy with {}% of data is: {:.2f}'.format(int(split*100), acc))
         accuracies.append(acc)
