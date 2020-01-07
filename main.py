@@ -61,7 +61,7 @@ def environment_step(train_dataloader, solver, task_model, num_repeats=3):
 def compute_reward(curr_state, time_step):
     class_acc = curr_state[:,0:5].detach()
     baseline = 20 + 0.8*time_step
-
+    # baseline = 1 + 2*time_step
     # choices: we can try to achieve parity. Or we can try and just maximize the total acc across everything
 
     # return torch.sum(curr_state-baseline) #equiv to acc.
@@ -339,8 +339,8 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
 
 def rl_main(args):
 
-    args.rl_batch_steps = 10
-    args.num_episodes = 100
+    args.rl_batch_steps = 5
+    args.num_episodes = 30
 
     args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
@@ -564,6 +564,8 @@ def rl_main(args):
 
         if i % args.rl_batch_steps==0:
 
+            # HER buffer dataloader here: we remember what the choice was, and the reward. then we can decouple the updates!
+            # but generally, we should try the baseline (easy)
 
             print("the loss is")
             print(gradient_accum)
