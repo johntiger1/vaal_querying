@@ -27,17 +27,36 @@ def cifar_transformer():
         ])
 
 '''
-Simulates a step of the environment. Returns the new state, and the next dynamic action space
+Simulates a step of the environment. Returns the new state, and the next dynamic action space.
+Returns a next state: 1x10 vector
 
 '''
-def environment_step(train_dataloader, solver, task_model):
-    acc, vae, discriminator, class_accs = solver.train_without_adv_vae(train_dataloader,
-                                                           task_model,
-                                                           None,
-                                                           None,
-                                                           None, args)
-    counts, total = dataloader_statistics(train_dataloader, 5)
-    return acc, torch.cat((class_accs.unsqueeze(0), counts.t()), axis=1)
+def environment_step(train_dataloader, solver, task_model, num_repeats=3):
+
+    accs = torch.zeros((num_repeats,1))
+    class_accs_across_runs = torch.zeros((num_repeats,5))
+    counts_across_runs = torch.zeros((num_repeats,5))
+
+    for i in range(num_repeats):
+        task_model = model.FCNet(num_classes=args.num_classes)  # remake a new task model each time
+
+        acc, vae, discriminator, class_accs = solver.train_without_adv_vae(train_dataloader,
+                                                               task_model,
+                                                               None,
+                                                               None,
+                                                               None, args)
+        counts, total = dataloader_statistics(train_dataloader, 5)
+
+        counts_across_runs[i] = counts.t()
+        accs[i] = acc
+        class_accs_across_runs[i] = class_accs
+
+    mean_class_accs = torch.mean(class_accs_across_runs, axis=0).unsqueeze(1)
+    mean_class_counts = torch.mean(counts_across_runs, axis=0).unsqueeze(1)
+
+    next_state_vector = torch.cat((mean_class_accs , mean_class_counts), axis=0)
+
+    return torch.mean(accs), next_state_vector.t()
 
 def compute_reward(curr_state, time_step):
     class_acc = curr_state[:,0:5].detach()
@@ -316,6 +335,7 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
     fig.savefig(os.path.join(args.out_path, "viz_{}".format(iteration)))
 
     fig.show()
+    plt.close(fig)
 
 def rl_main(args):
 
