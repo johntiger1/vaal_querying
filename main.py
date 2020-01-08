@@ -161,7 +161,9 @@ def get_query_via_kmeans(action, unlabelled_data, args):
         rand_idx = torch.randint(len(unlabelled_data), size=())
         datapoint = (unlabelled_data[rand_idx, 0:2], unlabelled_data[rand_idx, 2], unlabelled_data[rand_idx, 3])
         unlabelled_data = np.delete(unlabelled_data, rand_idx, 0)  # test to make sure this works
-        return unlabelled_data[rand_idx][-1], datapoint, unlabelled_data,rand
+
+        targ_cluster = torch.tensor(unlabelled_data[rand_idx][-1],dtype=torch.long).view(-1)
+        return targ_cluster, datapoint, unlabelled_data,rand
 
     targ_cluster = action.sample()
 
@@ -340,7 +342,7 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
 def rl_main(args):
 
     args.rl_batch_steps = 5
-    args.num_episodes = 30
+    args.num_episodes = 100
 
     args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
@@ -502,7 +504,7 @@ def rl_main(args):
         action_vector = pol_class_net (curr_state )
 
         action_dist = torch.distributions.Categorical(torch.nn.functional.softmax(action_vector)) #the diff between Softmax and softmax
-        print(action_dist.probs)
+        print(action_dist.probs) #recall logsoftmax and such
 
         # if torch.rand() < args.epsilon:
         #     pass
@@ -515,10 +517,11 @@ def rl_main(args):
 
 
 
-        if not rand:
+        if not rand or rand: #still compute the losses to avoid policy collpase
+            print(rand)
             pred_vector = action_vector.view(1,-1)
-            correct_label = correct_label
-            loss = criterion (pred_vector, correct_label)
+            correct_label = correct_label # just a k-size list
+            loss = criterion(pred_vector, correct_label)
 
 
 
@@ -549,10 +552,15 @@ def rl_main(args):
         accuracies.append(acc)
 
         # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
-        if not rand:
+        if not rand or rand:
             reward = compute_reward(curr_state, i) # basline is around 1% improvement
             print("log loss is")
             print(loss)
+
+            # check what the norm of the policy is
+            # if torch.sum(loss) <= 0.005:
+            #     loss +=0.005 #to avoid policy collapse
+
             loss *= reward # calling loss backwards here works
             loss *= -1 #
             gradient_accum[i% args.rl_batch_steps] = loss
@@ -567,11 +575,11 @@ def rl_main(args):
             # HER buffer dataloader here: we remember what the choice was, and the reward. then we can decouple the updates!
             # but generally, we should try the baseline (easy)
 
-            print("the loss is")
+            print("the gradient is")
             print(gradient_accum)
 
 
-
+            # let's prevent the policy collapse
             gradient_accum = gradient_accum[gradient_accum.nonzero()] #filter out the points where we took the epsilon policy
 
             print(gradient_accum)
