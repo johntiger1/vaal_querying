@@ -57,8 +57,15 @@ def environment_step(train_dataloader, solver, task_model, num_repeats=3):
     next_state_vector = torch.cat((mean_class_accs , mean_class_counts), axis=0)
 
     return torch.mean(accs), next_state_vector.t()
+'''
+returns the delta, as well as the actual performance
+'''
+def compute_reward(curr_state, time_step, prev_reward):
+    curr_state = curr_state[:,0:5].detach()
+    curr_reward = torch.mean(curr_state) - torch.mean(prev_reward)
+    prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
+    return curr_reward, prev_reward
 
-def compute_reward(curr_state, time_step):
     class_acc = curr_state[:,0:5].detach()
     baseline = 20 + 0.8*time_step
     # baseline = 1 + 2*time_step
@@ -95,6 +102,22 @@ def compute_reward(curr_state, time_step):
     # trying sum of squared errors
     return torch.sum((class_acc - baseline)**2) # we want to achieve 20% acc in all of them...
 
+'''
+Penalty for mode collapse. 
+
+Inputs: p and q are the distributions.
+'''
+def mode_collapse_penalty(p_dist,q_dist):
+    return torch.sum((p_dist-q_dist).pow(2))
+
+'''
+KL terms
+'''
+
+def mode_collapse_penalty_kl(p_dist,q_dist):
+    import torch.nn.functional as F
+
+    return F.kl_div(p_dist, q_dist)
 
 '''
 Returns the actual query, given an action distribution.
@@ -339,6 +362,7 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
     fig.show()
     plt.close(fig)
 
+
 def rl_main(args):
 
     args.rl_batch_steps = 5
@@ -398,6 +422,10 @@ def rl_main(args):
     '''
     FORMULATION1: We will feed in the class_specific accuracies.
     '''
+    ROLLING_AVG_LEN = 5
+    prev_reward = torch.ones((ROLLING_AVG_LEN,1))
+    prev_reward *=20
+
     STATE_SPACE = args.num_classes
     ACTION_SPACE = args.num_classes
     CLASS_DIST_SPACE = args.num_classes
@@ -436,7 +464,7 @@ def rl_main(args):
     kmeans_obj = KMeans(n_clusters=5, random_state=0)  # we can also fit one kmeans at the very start.
     cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
 
-    oracle_clusters = False
+    oracle_clusters = True
 
     if oracle_clusters:
         unlabelled_dataset = np.concatenate((X, labels), axis=1)
@@ -553,7 +581,8 @@ def rl_main(args):
 
         # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
         if not rand or rand:
-            reward = compute_reward(curr_state, i) # basline is around 1% improvement
+
+            reward, prev_reward = compute_reward(curr_state, i, prev_reward) # basline is around 1% improvement
             print("log loss is")
             print(loss)
 
@@ -562,7 +591,20 @@ def rl_main(args):
             #     loss +=0.005 #to avoid policy collapse
 
             loss *= reward # calling loss backwards here works
-            loss *= -1 #
+            loss *= -1 #want to maximize the reward
+
+
+            # add the penalty as well
+            p_dist = curr_state[:,5:]
+            q_dist = torch.ones((1, args.num_classes))
+            q_dist *= i//args.num_classes+1
+            mcp_loss  = mode_collapse_penalty(p_dist, q_dist)
+            args.mc_alpha = 0.5
+            print(p_dist, q_dist)
+
+            print(loss, mcp_loss)
+            loss = loss + args.mc_alpha *mcp_loss #this detracts from the reward
+
             gradient_accum[i% args.rl_batch_steps] = loss
 
             # tess = torch.mean(gradient_accum)
@@ -570,7 +612,7 @@ def rl_main(args):
             # print(tess)
             # tess.backward()
 
-        if i % args.rl_batch_steps==0:
+        if i % args.rl_batch_steps==0 and i!=0:
 
             # HER buffer dataloader here: we remember what the choice was, and the reward. then we can decouple the updates!
             # but generally, we should try the baseline (easy)
