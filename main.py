@@ -116,8 +116,15 @@ KL terms
 
 def mode_collapse_penalty_kl(p_dist,q_dist):
     import torch.nn.functional as F
+    p_dist += 0.05
+    # smooth it
+    p_dist /=torch.sum(p_dist)
 
-    return F.kl_div(p_dist, q_dist)
+    print(p_dist, q_dist)
+    print("kl term is")
+    kl = F.kl_div(p_dist.log(), q_dist, reduction="batchmean") #reverse KL
+    print(kl )
+    return kl
 
 '''
 Returns the actual query, given an action distribution.
@@ -596,13 +603,25 @@ def rl_main(args):
 
             # add the penalty as well
             p_dist = curr_state[:,5:]
+            # p_dist /= torch.sum(p_dist) #normalize
+
+
+            # KL penalty
+            # q_dist = torch.ones((1, args.num_classes))
+            # q_dist *= 1/(args.num_classes) #normalize this
+
+
+            # add delta smoothing
+            # mcp_loss  = mode_collapse_penalty_kl(p_dist, q_dist )
+
+            # Square penalty
             q_dist = torch.ones((1, args.num_classes))
             q_dist *= i//args.num_classes+1
-            mcp_loss  = mode_collapse_penalty(p_dist, q_dist)
-            args.mc_alpha = 0.5
-            print(p_dist, q_dist)
+            mcp_loss = mode_collapse_penalty(p_dist, q_dist)
 
+            args.mc_alpha = 0.7/(i//10)
             print(loss, mcp_loss)
+
             loss = loss + args.mc_alpha *mcp_loss #this detracts from the reward
 
             gradient_accum[i% args.rl_batch_steps] = loss
