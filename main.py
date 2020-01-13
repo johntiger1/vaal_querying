@@ -64,6 +64,8 @@ def compute_reward(curr_state, time_step, prev_reward):
     curr_state = curr_state[:,0:5].detach()
     curr_reward = torch.mean(curr_state) - torch.mean(prev_reward)
     prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
+
+
     return curr_reward, prev_reward
 
     class_acc = curr_state[:,0:5].detach()
@@ -116,9 +118,9 @@ KL terms
 
 def mode_collapse_penalty_kl(p_dist,q_dist):
     import torch.nn.functional as F
-    p_dist += 0.05
-    # smooth it
-    p_dist /=torch.sum(p_dist)
+    # p_dist += 0.05
+    # # smooth it
+    # p_dist /=torch.sum(p_dist)
 
     print(p_dist, q_dist)
     print("kl term is")
@@ -372,10 +374,10 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
 
 def rl_main(args):
 
-    args.rl_batch_steps = 5
+    args.rl_batch_steps = 2
     args.num_episodes = 100
 
-    args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.0 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -438,7 +440,7 @@ def rl_main(args):
     CLASS_DIST_SPACE = args.num_classes
 
     pol_class_net = PolicyNet(STATE_SPACE + CLASS_DIST_SPACE, ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
-    pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-3)
+    pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-1)
 
 
     curr_state = torch.zeros((1,STATE_SPACE + CLASS_DIST_SPACE)) #only feed it in the past state directly
@@ -530,15 +532,18 @@ def rl_main(args):
 
 
     # try combining it with the state. and also, just try doing an epsilon greedy policy
-
+    import torch.nn.functional as F
     for i in tqdm(range(args.num_episodes)):
         pol_optimizer.zero_grad()
 
         # here we need a fake label, in order to back prop the loss. And don't backprop immediately, instead, get the gradient,
         # hold it, wait for the reward, and then backprop on that quantity
         action_vector = pol_class_net (curr_state )
+        # torch.nn.functional.log_softmax(action_vector)
+        action_dist = torch.distributions.Categorical(logits=F.softmax(action_vector)) #the diff between Softmax and softmax
 
-        action_dist = torch.distributions.Categorical(torch.nn.functional.softmax(action_vector)) #the diff between Softmax and softmax
+        # we probably need logsoftmax here too
+        print("dist probs\n")
         print(action_dist.probs) #recall logsoftmax and such
 
         # if torch.rand() < args.epsilon:
@@ -553,7 +558,7 @@ def rl_main(args):
 
 
         if not rand or rand: #still compute the losses to avoid policy collpase
-            print(rand)
+            # print(rand)
             pred_vector = action_vector.view(1,-1)
             correct_label = correct_label # just a k-size list
             loss = criterion(pred_vector, correct_label)
@@ -573,7 +578,7 @@ def rl_main(args):
                                                sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
         class_counts, total = dataloader_statistics(train_dataloader, args.num_classes)
-        print(class_counts)
+        print("class counts {}".format(class_counts))
 
 
 
@@ -581,6 +586,7 @@ def rl_main(args):
         # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
         # lets just try the dataloader, but it will be challenging when we have the batch size...
         # print(correct_label)
+        print("this is the action taken by the sampler")
         print(action)
 
         acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
@@ -590,8 +596,8 @@ def rl_main(args):
         if not rand or rand:
 
             reward, prev_reward = compute_reward(curr_state, i, prev_reward) # basline is around 1% improvement
-            print("log loss is")
-            print(loss)
+            # print("log loss is")
+            # print(loss)
 
             # check what the norm of the policy is
             # if torch.sum(loss) <= 0.005:
@@ -600,29 +606,36 @@ def rl_main(args):
             loss *= reward # calling loss backwards here works
             loss *= -1 #want to maximize the reward
 
+            args.penalty_type = "kl"
+            p_dist = curr_state[:,5:]
+
+            if args.penalty_type == "kl":
 
             # add the penalty as well
-            p_dist = curr_state[:,5:]
-            # p_dist /= torch.sum(p_dist) #normalize
+            #     p_dist /= torch.sum(p_dist) #normalize
 
 
             # KL penalty
-            # q_dist = torch.ones((1, args.num_classes))
-            # q_dist *= 1/(args.num_classes) #normalize this
+                q_dist = torch.ones((1, args.num_classes),requires_grad=True)
+                q_dist = q_dist* 1/(args.num_classes) #normalize this
 
 
             # add delta smoothing
-            # mcp_loss  = mode_collapse_penalty_kl(p_dist, q_dist )
+                mcp_loss  = mode_collapse_penalty_kl(p_dist, q_dist )
+            else:
 
             # Square penalty
-            q_dist = torch.ones((1, args.num_classes))
-            q_dist *= i//args.num_classes+1
-            mcp_loss = mode_collapse_penalty(p_dist, q_dist)
+                q_dist = torch.ones((1, args.num_classes), requires_grad=True)
+                q_dist = q_dist  * i//args.num_classes+1
+                mcp_loss = mode_collapse_penalty(p_dist, q_dist)
 
-            args.mc_alpha = 0.7/(i//10)
+            args.mc_alpha = 0.5
             print(loss, mcp_loss)
 
-            loss = loss + args.mc_alpha *mcp_loss #this detracts from the reward
+            # loss = loss + args.mc_alpha *mcp_loss #this detracts from the reward
+            loss = loss
+            print("total loss")
+            print(loss)
 
             gradient_accum[i% args.rl_batch_steps] = loss
 
