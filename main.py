@@ -474,7 +474,7 @@ def rl_main(args):
     kmeans_obj = KMeans(n_clusters=5, random_state=0)  # we can also fit one kmeans at the very start.
     cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
 
-    oracle_clusters = True
+    oracle_clusters = False
 
     if oracle_clusters:
         unlabelled_dataset = np.concatenate((X, labels), axis=1)
