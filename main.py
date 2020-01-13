@@ -118,9 +118,9 @@ KL terms
 
 def mode_collapse_penalty_kl(p_dist,q_dist):
     import torch.nn.functional as F
-    # p_dist += 0.05
+    p_dist += 0.05
     # # smooth it
-    # p_dist /=torch.sum(p_dist)
+    p_dist /=torch.sum(p_dist)
 
     print(p_dist, q_dist)
     print("kl term is")
@@ -607,12 +607,12 @@ def rl_main(args):
             loss *= -1 #want to maximize the reward
 
             args.penalty_type = "kl"
-            p_dist = curr_state[:,5:]
+            p_dist = curr_state[:,5:].clone()
 
             if args.penalty_type == "kl":
 
             # add the penalty as well
-            #     p_dist /= torch.sum(p_dist) #normalize
+                p_dist /= torch.sum(p_dist) #normalize
 
 
             # KL penalty
@@ -629,11 +629,11 @@ def rl_main(args):
                 q_dist = q_dist  * i//args.num_classes+1
                 mcp_loss = mode_collapse_penalty(p_dist, q_dist)
 
-            args.mc_alpha = 0.5
+            args.mc_alpha = 8000
             print(loss, mcp_loss)
 
-            # loss = loss + args.mc_alpha *mcp_loss #this detracts from the reward
-            loss = loss
+            loss = 0 #this detracts from the reward
+            # loss = loss
             print("total loss")
             print(loss)
 
