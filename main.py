@@ -118,9 +118,9 @@ KL terms
 
 def mode_collapse_penalty_kl(p_dist,q_dist):
     import torch.nn.functional as F
-    p_dist += 0.05
+    # p_dist += 0.05
     # # smooth it
-    p_dist /=torch.sum(p_dist)
+    # p_dist /=torch.sum(p_dist)
 
     print(p_dist, q_dist)
     print("kl term is")
@@ -331,7 +331,7 @@ def random_baseline(args, num_iters=100):
             train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch, axis=1)), axis=1)
             visual_labelled_dataset = np.concatenate((visual_labelled_dataset, train_ex_batch), axis=0)  # concat the
 
-        visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints_batch)
+        visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints_batch, args.sampling_method)
 
     return accuracies
 
@@ -352,7 +352,7 @@ def dataloader_statistics(train_dataloader, num_classes):
 '''
 new datapoints is a numpy array, n by D+1 (D for the features, 1 for the class)
 '''
-def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoints):
+def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoints, name="rl"):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
 
@@ -366,7 +366,7 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
         # break
 
     ax.scatter(new_datapoints[:,0],new_datapoints[:,1], s=100)
-    fig.savefig(os.path.join(args.out_path, "viz_{}".format(iteration)))
+    fig.savefig(os.path.join(args.out_path, "{}_viz_{}".format(name,iteration)))
 
     fig.show()
     plt.close(fig)
@@ -434,13 +434,14 @@ def rl_main(args):
     ROLLING_AVG_LEN = 5
     prev_reward = torch.ones((ROLLING_AVG_LEN,1))
     prev_reward *=20
+    print("prev_reward{}".format(prev_reward))
 
     STATE_SPACE = args.num_classes
     ACTION_SPACE = args.num_classes
     CLASS_DIST_SPACE = args.num_classes
 
     pol_class_net = PolicyNet(STATE_SPACE + CLASS_DIST_SPACE, ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
-    pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-1)
+    pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-2)
 
 
     curr_state = torch.zeros((1,STATE_SPACE + CLASS_DIST_SPACE)) #only feed it in the past state directly
@@ -540,11 +541,15 @@ def rl_main(args):
         # hold it, wait for the reward, and then backprop on that quantity
         action_vector = pol_class_net (curr_state )
         # torch.nn.functional.log_softmax(action_vector)
-        action_dist = torch.distributions.Categorical(logits=F.softmax(action_vector)) #the diff between Softmax and softmax
+        # action_dist = torch.zeros((1))
+        action_dist = torch.distributions.Categorical(probs=F.softmax(action_vector)) #the diff between Softmax and softmax
 
         # we probably need logsoftmax here too
-        print("dist probs\n")
-        print(action_dist.probs) #recall logsoftmax and such
+        print("action dist{}\n, dist probs{}\n, self f.softmax {}\n, self.log softmax{}\n".format(action_vector,action_dist.probs,
+                                                                                              F.softmax(action_vector, dim=1),
+                                                                                              F.log_softmax(action_vector,
+                                                                                                        dim=1))) #intelligent to take the softmax over the right dimension
+        # print() #recall logsoftmax and such
 
         # if torch.rand() < args.epsilon:
         #     pass
@@ -562,6 +567,10 @@ def rl_main(args):
             pred_vector = action_vector.view(1,-1)
             correct_label = correct_label # just a k-size list
             loss = criterion(pred_vector, correct_label)
+
+            print("loss stats")
+            print(pred_vector, correct_label)
+
 
 
 
@@ -596,6 +605,9 @@ def rl_main(args):
         if not rand or rand:
 
             reward, prev_reward = compute_reward(curr_state, i, prev_reward) # basline is around 1% improvement
+            print("prev_reward{}".format(prev_reward))
+            print("curr reward{}".format(reward))
+
             # print("log loss is")
             # print(loss)
 
@@ -621,7 +633,7 @@ def rl_main(args):
 
 
             # add delta smoothing
-                mcp_loss  = mode_collapse_penalty_kl(p_dist, q_dist )
+                mcp_loss  = mode_collapse_penalty_kl(action_dist.probs.clone(), q_dist )
             else:
 
             # Square penalty
@@ -629,11 +641,11 @@ def rl_main(args):
                 q_dist = q_dist  * i//args.num_classes+1
                 mcp_loss = mode_collapse_penalty(p_dist, q_dist)
 
-            args.mc_alpha = 8000
+            args.mc_alpha = 8
             print(loss, mcp_loss)
 
-            loss = 0 #this detracts from the reward
-            # loss = loss
+            # loss = mcp_loss #this detracts from the reward
+            loss = loss + args.mc_alpha * mcp_loss
             print("total loss")
             print(loss)
 
