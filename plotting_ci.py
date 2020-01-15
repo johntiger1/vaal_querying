@@ -279,8 +279,73 @@ def load_data_baselines(path,  pattern="kl_penalty", mode="kl_penalty"):
     return all_accs
     pass
 
+
+def gen_ci_plot(accs, fig, ax):
+    x = np.arange(0, accs.shape[1])
+    y = np.mean(accs, axis=0)
+    t = 2
+
+    # Modeling with Numpy
+    def equation(a, b):
+        """Return a 1D polynomial."""
+        return np.polyval(a, b)
+
+    p, cov = np.polyfit(x, y, 1, cov=True)  # parameters and covariance from of the fit of 1-D polynom.
+    y_model = equation(p, x)  # model using the fit parameters; NOTE: parameters here are coefficients
+    # Plotting --------------------------------------------------------------------
+    # fig, ax = plt.subplots(figsize=(8, 6))
+    # Data
+    ax.plot(
+        x, y, "o", color="#b9cfe7", markersize=8,
+        markeredgewidth=1, markeredgecolor="b", markerfacecolor="None"
+    )
+    # Fit
+    ax.plot(x, y_model, "-", color="0.1", linewidth=1.5, alpha=0.5, label="Fit")
+    x2 = np.linspace(np.min(x), np.max(x), len(x))
+    y2 = equation(p, x2)
+    # Confidence Interval (select one)
+    # plot_ci_manual(t, s_err, n, x, x2, y2, ax=ax)
+    # plot_ci_bootstrap(x, y, resid, ax=ax)
+    plot_ci_normal_dist(t, x2, y2, y, ax=ax)
+    # # Prediction Interval
+    # pi = t * s_err * np.sqrt(1 + 1 / n + (x2 - np.mean(x)) ** 2 / np.sum((x - np.mean(x)) ** 2))
+    # ax.fill_between(x2, y2 + pi, y2 - pi, color="None", linestyle="--")
+    # ax.plot(x2, y2 - pi, "--", color="0.5", label="95% Prediction Limits")
+    # ax.plot(x2, y2 + pi, "--", color="0.5")
+    # Figure Modifications --------------------------------------------------------
+    # Borders
+    ax.spines["top"].set_color("0.5")
+    ax.spines["bottom"].set_color("0.5")
+    ax.spines["left"].set_color("0.5")
+    ax.spines["right"].set_color("0.5")
+    ax.get_xaxis().set_tick_params(direction="out")
+    ax.get_yaxis().set_tick_params(direction="out")
+    ax.xaxis.tick_bottom()
+    ax.yaxis.tick_left()
+    # Labels
+    plt.title("Fit Plot for Weight", fontsize="14", fontweight="bold")
+    plt.xlabel("Height")
+    plt.ylabel("Weight")
+    plt.xlim(np.min(x) - 1, np.max(x) + 1)
+    # Custom legend
+    handles, labels = ax.get_legend_handles_labels()
+    display = (0, 1)
+    anyArtist = plt.Line2D((0, 1), (0, 0), color="#b9cfe7")  # create custom artists
+    legend = plt.legend(
+        [handle for i, handle in enumerate(handles) if i in display] + [anyArtist],
+        [label for i, label in enumerate(labels) if i in display] + ["95% Confidence Limits"],
+        loc=9, bbox_to_anchor=(0, -0.21, 1., 0.102), ncol=3, mode="expand"
+    )
+    frame = legend.get_frame().set_edgecolor("0.5")
+    # Save Figure
+    plt.tight_layout()
+    plt.savefig("filename.png", bbox_extra_artists=(legend,), bbox_inches="tight")
+    fig.show()
+    return fig, ax
+
+
 if __name__ == "__main__":
-    all_accs = load_data("/scratch/gobi1/johnchen/vaal_results")
+    accs = load_data("/scratch/gobi1/johnchen/vaal_results")
     random_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="random")
     uncertainty_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="uncertainty")
     # Computations ----------------------------------------------------------------
@@ -301,78 +366,10 @@ if __name__ == "__main__":
     '''
 
     '''trying the regular mean fit'''
-    x = np.arange(0, all_accs.shape[1])
-    y = np.mean(all_accs, axis=0)
-    t = 2
-
-    # Modeling with Numpy
-    def equation(a, b):
-        """Return a 1D polynomial."""
-        return np.polyval(a, b)
-
-
-    p, cov = np.polyfit(x, y, 1, cov=True)  # parameters and covariance from of the fit of 1-D polynom.
-    y_model = equation(p, x)  # model using the fit parameters; NOTE: parameters here are coefficients
-
-
-
-    # Plotting --------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = gen_ci_plot(accs, fig, ax)
+    fig, ax = gen_ci_plot(random_accs, fig, ax)
+    fig, ax = gen_ci_plot(uncertainty_accs, fig, ax)
 
-    # Data
-    ax.plot(
-        x, y, "o", color="#b9cfe7", markersize=8,
-        markeredgewidth=1, markeredgecolor="b", markerfacecolor="None"
-    )
 
-    # Fit
-    ax.plot(x, y_model, "-", color="0.1", linewidth=1.5, alpha=0.5, label="Fit")
-
-    x2 = np.linspace(np.min(x), np.max(x), len(x))
-    y2 = equation(p, x2)
-
-    # Confidence Interval (select one)
-    # plot_ci_manual(t, s_err, n, x, x2, y2, ax=ax)
-    # plot_ci_bootstrap(x, y, resid, ax=ax)
-    plot_ci_normal_dist(t,x2,y2,y, ax=ax)
-
-    # # Prediction Interval
-    # pi = t * s_err * np.sqrt(1 + 1 / n + (x2 - np.mean(x)) ** 2 / np.sum((x - np.mean(x)) ** 2))
-    # ax.fill_between(x2, y2 + pi, y2 - pi, color="None", linestyle="--")
-    # ax.plot(x2, y2 - pi, "--", color="0.5", label="95% Prediction Limits")
-    # ax.plot(x2, y2 + pi, "--", color="0.5")
-
-    # Figure Modifications --------------------------------------------------------
-    # Borders
-    ax.spines["top"].set_color("0.5")
-    ax.spines["bottom"].set_color("0.5")
-    ax.spines["left"].set_color("0.5")
-    ax.spines["right"].set_color("0.5")
-    ax.get_xaxis().set_tick_params(direction="out")
-    ax.get_yaxis().set_tick_params(direction="out")
-    ax.xaxis.tick_bottom()
-    ax.yaxis.tick_left()
-
-    # Labels
-    plt.title("Fit Plot for Weight", fontsize="14", fontweight="bold")
-    plt.xlabel("Height")
-    plt.ylabel("Weight")
-    plt.xlim(np.min(x) - 1, np.max(x) + 1)
-
-    # Custom legend
-    handles, labels = ax.get_legend_handles_labels()
-    display = (0, 1)
-    anyArtist = plt.Line2D((0, 1), (0, 0), color="#b9cfe7")  # create custom artists
-    legend = plt.legend(
-        [handle for i, handle in enumerate(handles) if i in display] + [anyArtist],
-        [label for i, label in enumerate(labels) if i in display] + ["95% Confidence Limits"],
-        loc=9, bbox_to_anchor=(0, -0.21, 1., 0.102), ncol=3, mode="expand"
-    )
-    frame = legend.get_frame().set_edgecolor("0.5")
-
-    # Save Figure
-    plt.tight_layout()
-    plt.savefig("filename.png", bbox_extra_artists=(legend,), bbox_inches="tight")
-
-    plt.show()
     pass
