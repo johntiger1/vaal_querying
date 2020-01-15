@@ -38,7 +38,7 @@ y2: conditional mean response
 X: the actual data (needed to compute the standard deviation) 
 t: width of the CI, in std. devs.
 '''
-def plot_ci_normal_dist(t, x2, y2, X, ax=None):
+def plot_ci_normal_dist(t, x2, y2, means, ax=None):
     """Return an axes of confidence bands using a simple approach.
 
     Notes
@@ -54,12 +54,10 @@ def plot_ci_normal_dist(t, x2, y2, X, ax=None):
     """
     # we can compute the stddev via a built in, or explicitly.
     # let's try it explicitly
-    X = X.reshape((1,-1))
-    means = np.mean(X, axis=0, keepdims=True)
     # assert means.shape[1] == X.shape[1] == 25
     # assert means.shape[0] == 1
 
-
+    means = means.reshape((-1, 100))
     std_devs = np.sqrt(means * (100-means)/means.shape[1])
 
     ci = t*std_devs
@@ -229,10 +227,62 @@ def load_data(path, pattern="kl_penalty"):
     return all_accs
     pass
 
+def load_data_baselines(path,  pattern="kl_penalty", mode="kl_penalty"):
+    # we can glob the entire path
+    #
+    import os
+    import numpy as np
+
+    all_accs = np.zeros((25,100))
+    for root, dirs, files in os.walk(path):
+        for dir in dirs:
+            print(root, dirs)
+
+            if pattern in dir and root==path:
+                # print(dir)
+
+                ind = int(dir.split("_")[-1])
+                # print(ind)
+
+                if mode == "kl_penalty":
+                    with open(os.path.join(root, dir,"accs.txt"), "r") as file:
+                        counter = 0
+                        for line in (file):
+                            if ";" in line:
+                                if counter==100:
+                                    print(ind, counter)
+                                # print(counter)
+                                acc = line.split(";")[0]
+                                all_accs[ind,counter] = float(acc)
+                                counter+=1
+                elif mode == "uncertainty" or mode == "random":
+                    # print(dir)
+                    #
+                    # print(os.path.join(root, dir, mode + "_current_accs.txt"))
+                    with open(os.path.join(root, dir, mode + "_current_accs.txt"), "r") as file:
+                        counter = 0
+                        for line in (file):
+                            if " " in line:
+                                if counter==100:
+                                    print(ind, counter)
+                                # print(counter)
+                                acc = line.split(" ")[0]
+                                all_accs[ind,counter] = float(acc)
+                                counter+=1
+
+
+                    # break
+                    # print(file.readlines(1))
+    # print(all_accs)
+    print(all_accs.shape)
+    #                 open with w => overwrite!
+    return all_accs
+    pass
+
 if __name__ == "__main__":
     all_accs = load_data("/scratch/gobi1/johnchen/vaal_results")
-
-
+    random_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="random")
+    uncertainty_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="uncertainty")
     # Computations ----------------------------------------------------------------
     # Raw Data
 
@@ -284,7 +334,7 @@ if __name__ == "__main__":
     # Confidence Interval (select one)
     # plot_ci_manual(t, s_err, n, x, x2, y2, ax=ax)
     # plot_ci_bootstrap(x, y, resid, ax=ax)
-    plot_ci_normal_dist(t,x2,y2,x, ax=ax)
+    plot_ci_normal_dist(t,x2,y2,y, ax=ax)
 
     # # Prediction Interval
     # pi = t * s_err * np.sqrt(1 + 1 / n + (x2 - np.mean(x)) ** 2 / np.sum((x - np.mean(x)) ** 2))
