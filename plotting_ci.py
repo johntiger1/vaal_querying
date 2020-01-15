@@ -62,8 +62,8 @@ def plot_ci_normal_dist(t, x2, y2, means, ax=None, color="#b9cfe7"):
     # assert means.shape[1] == X.shape[1] == 25
     # assert means.shape[0] == 1
     from matplotlib import cm
-    means = means.reshape((-1, 100))
-    std_devs = np.sqrt(means * (100-means)/means.shape[1])
+    means = means.reshape((-1, len(means)))
+    std_devs = np.sqrt(means * (100-means)/25)
 
     ci = t*std_devs
 
@@ -219,6 +219,16 @@ def load_data_baselines(path,  pattern="kl_penalty", mode="kl_penalty"):
     pass
 
 
+
+def stddev_plot(x,y):
+    fig,ax = plt.subplots()
+
+    ax.plot(x,y)
+    fig.show()
+
+    pass
+
+
 def gen_ci_plot(accs, fig, ax, color="g"):
     x = np.arange(0, accs.shape[1])
     y = np.mean(accs, axis=0)
@@ -236,15 +246,23 @@ def gen_ci_plot(accs, fig, ax, color="g"):
     # Data
     ax.plot(
         x, y, "o", color=color, markersize=8,
-        markeredgewidth=1, markeredgecolor=color, markerfacecolor="None"
+        markeredgewidth=1, markeredgecolor=color, markerfacecolor="None",
     )
     # Fit
-    ax.plot(x, y_model, "-", color="0.1", linewidth=1.5, alpha=0.5, label="Fit")
+    ax.plot(x, y_model, "-", color=color, linewidth=1.5, alpha=0.5, label="r={}".format(p))
     x2 = np.linspace(np.min(x), np.max(x), len(x))
     y2 = equation(p, x2)
     # Confidence Interval (select one)
     # plot_ci_manual(t, s_err, n, x, x2, y2, ax=ax)
     # plot_ci_bootstrap(x, y, resid, ax=ax)
+
+    means = y
+    # means = means.reshape((-1, len(means)))
+    std_devs = np.sqrt(means * (100 - means) / 25)
+    std_vars = means * (100 - means) / 25
+
+    # ax.plot(x, std_vars, label="std_vars", color=color)
+
     plot_ci_normal_dist(t, x2, y2, y, ax=ax, color=color)
     # # Prediction Interval
     # pi = t * s_err * np.sqrt(1 + 1 / n + (x2 - np.mean(x)) ** 2 / np.sum((x - np.mean(x)) ** 2))
@@ -278,6 +296,8 @@ def gen_ci_plot(accs, fig, ax, color="g"):
     frame = legend.get_frame().set_edgecolor("0.5")
     # Save Figure
     plt.tight_layout()
+    fig.legend()
+
     plt.savefig("filename.png", bbox_extra_artists=(legend,), bbox_inches="tight")
     fig.show()
     return fig, ax
@@ -287,6 +307,11 @@ if __name__ == "__main__":
     accs = load_data("/scratch/gobi1/johnchen/vaal_results")
     random_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="random")
     uncertainty_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="uncertainty")
+
+    # accs = accs[:,:50]
+    # random_accs = random_accs[:,:50]
+    # uncertainty_accs = uncertainty_accs[:,:50]
+
     # Computations ----------------------------------------------------------------
     # Raw Data
 
@@ -316,6 +341,5 @@ if __name__ == "__main__":
     fig, ax = gen_ci_plot(accs, fig, ax, color="g")
     fig, ax = gen_ci_plot(random_accs, fig, ax, color="r")
     fig, ax = gen_ci_plot(uncertainty_accs, fig, ax, color="b")
-
 
     pass
