@@ -121,8 +121,18 @@ def mode_collapse_penalty_kl(p_dist,q_dist):
     # p_dist += 0.05
     # # smooth it
     # p_dist /=torch.sum(p_dist)
+    
+    p_EPSILON = 1e-10
 
     print(p_dist, q_dist)
+    if len((p_dist==0).nonzero()) > 0:
+        print("WE HAVE A ZERO")
+        print(p_dist)
+        p_dist = p_dist + p_EPSILON
+        p_dist = p_dist/torch.sum(p_dist)
+        print("renormalized")
+        print(p_dist)
+        
     print("kl term is")
     kl = F.kl_div(p_dist.log(), q_dist, reduction="batchmean") #reverse KL
     print(kl )
@@ -404,7 +414,7 @@ def rl_main(args):
         args.initial_budget = 1
         args.num_classes = 5
 
-    random.seed(2547)
+    random.seed(args.torch_manual_seed)
     torch.manual_seed(args.torch_manual_seed)
     args.cuda = args.cuda and torch.cuda.is_available()
     solver = Solver(args, test_dataloader)
@@ -694,6 +704,9 @@ def rl_main(args):
 
         # loss.backward()
         # pol_optimizer.step()
+
+        with open(os.path.join(args.out_path, "accs.txt"), "a") as acc_file:
+            acc_file.write("{};{}\n".format(acc, curr_state))
 
 
         print(curr_state)
@@ -1382,6 +1395,7 @@ def query_analysis(queried_indices, unlabeled_dataloader, args, split):
 
 if __name__ == '__main__':
     args = arguments.get_args()
+    torch.manual_seed(args.torch_manual_seed)
 
     args.device = None
     if args.cuda and torch.cuda.is_available():
@@ -1389,5 +1403,20 @@ if __name__ == '__main__':
     else:
         args.device = torch.device('cpu')
 
-    # main(args)
-    rl_main(args)
+
+
+    # this is a target for parallelization
+    import torch
+    for i in range(0, 25):
+        rand_run = torch.randint(high=1000000, size=())
+        args.log_name = "kl_penalty_{}".format(i)
+        args.torch_manual_seed = rand_run
+
+        args.out_path = "/scratch/gobi1/johnchen/vaal_results/{}".format(args.log_name )
+
+        # main(args)
+
+        if not os.path.exists(args.out_path):
+            os.mkdir(args.out_path)
+
+        rl_main(args)
