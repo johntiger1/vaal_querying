@@ -38,7 +38,7 @@ y2: conditional mean response
 X: the actual data (needed to compute the standard deviation) 
 t: width of the CI, in std. devs.
 '''
-def plot_ci_normal_dist(t, x2, y2, means, ax=None, color="#b9cfe7"):
+def plot_ci_normal_dist(t, x2, y2, means, num_samples, ax=None, color="#b9cfe7"):
     import matplotlib
     from matplotlib import colors
 
@@ -63,7 +63,7 @@ def plot_ci_normal_dist(t, x2, y2, means, ax=None, color="#b9cfe7"):
     # assert means.shape[0] == 1
     from matplotlib import cm
     means = means.reshape((-1, len(means)))
-    std_devs = np.sqrt(means * (100-means)/25)
+    std_devs = np.sqrt(means * (100-means)/num_samples)
 
     ci = t*std_devs
 
@@ -145,7 +145,6 @@ def load_data(path, pattern="kl_penalty"):
 
                 ind = int(dir.split("_")[-1])
                 print(ind)
-
                 with open(os.path.join(root, dir,"accs.txt"), "r") as file:
                     counter = 0
                     for line in (file):
@@ -166,13 +165,13 @@ def load_data(path, pattern="kl_penalty"):
     return all_accs
     pass
 
-def load_data_baselines(path,  pattern="kl_penalty", mode="kl_penalty"):
+def load_data_baselines(path,  pattern="kl_penalty", mode="kl_penalty", num_samples=20):
     # we can glob the entire path
     #
     import os
     import numpy as np
 
-    all_accs = np.zeros((25,100))
+    all_accs = np.zeros((num_samples,100))
     for root, dirs, files in os.walk(path):
         for dir in dirs:
             print(root, dirs)
@@ -182,6 +181,7 @@ def load_data_baselines(path,  pattern="kl_penalty", mode="kl_penalty"):
 
                 ind = int(dir.split("_")[-1])
                 # print(ind)
+                if ind >= num_samples: continue
 
                 if mode == "kl_penalty":
                     with open(os.path.join(root, dir,"accs.txt"), "r") as file:
@@ -230,6 +230,8 @@ def stddev_plot(x,y):
 
 
 def gen_ci_plot(accs, fig, ax, color="g"):
+
+    num_samples = accs.shape[0]
     x = np.arange(0, accs.shape[1])
     y = np.mean(accs, axis=0)
     t = 2
@@ -258,12 +260,12 @@ def gen_ci_plot(accs, fig, ax, color="g"):
 
     means = y
     # means = means.reshape((-1, len(means)))
-    std_devs = np.sqrt(means * (100 - means) / 25)
-    std_vars = means * (100 - means) / 25
+    std_devs = np.sqrt(means * (100 - means) / num_samples)
+    std_vars = means * (100 - means) / num_samples
 
     # ax.plot(x, std_vars, label="std_vars", color=color)
 
-    plot_ci_normal_dist(t, x2, y2, y, ax=ax, color=color)
+    plot_ci_normal_dist(t, x2, y2, y,num_samples, ax=ax, color=color)
     # # Prediction Interval
     # pi = t * s_err * np.sqrt(1 + 1 / n + (x2 - np.mean(x)) ** 2 / np.sum((x - np.mean(x)) ** 2))
     # ax.fill_between(x2, y2 + pi, y2 - pi, color="None", linestyle="--")
@@ -280,14 +282,18 @@ def gen_ci_plot(accs, fig, ax, color="g"):
     ax.xaxis.tick_bottom()
     ax.yaxis.tick_left()
     # Labels
-    plt.title("Fit Plot for Weight", fontsize="14", fontweight="bold")
-    plt.xlabel("Height")
-    plt.ylabel("Weight")
+    plt.title("Fit Plot for Query Methods", fontsize="14", fontweight="bold")
+    plt.xlabel("Queries")
+    plt.ylabel("Accuracy")
     plt.xlim(np.min(x) - 1, np.max(x) + 1)
     # Custom legend
     handles, labels = ax.get_legend_handles_labels()
     display = (0, 1)
     anyArtist = plt.Line2D((0, 1), (0, 0), color=color)  # create custom artists
+
+    if ax.get_legend():
+        ax.get_legend().remove()
+    ax.legend(loc="center right")
     legend = plt.legend(
         [handle for i, handle in enumerate(handles) if i in display] + [anyArtist],
         [label for i, label in enumerate(labels) if i in display] + ["95% Confidence Limits"],
@@ -296,7 +302,7 @@ def gen_ci_plot(accs, fig, ax, color="g"):
     frame = legend.get_frame().set_edgecolor("0.5")
     # Save Figure
     plt.tight_layout()
-    fig.legend()
+
 
     plt.savefig("filename.png", bbox_extra_artists=(legend,), bbox_inches="tight")
     fig.show()
@@ -304,13 +310,13 @@ def gen_ci_plot(accs, fig, ax, color="g"):
 
 
 if __name__ == "__main__":
-    accs = load_data("/scratch/gobi1/johnchen/vaal_results")
+    accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results")
     random_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="random")
     uncertainty_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="uncertainty")
 
-    # accs = accs[:,:50]
-    # random_accs = random_accs[:,:50]
-    # uncertainty_accs = uncertainty_accs[:,:50]
+    # accs = accs[:,:30]
+    # random_accs = random_accs[:,:30]
+    # uncertainty_accs = uncertainty_accs[:,:30]
 
     # Computations ----------------------------------------------------------------
     # Raw Data
@@ -341,5 +347,5 @@ if __name__ == "__main__":
     fig, ax = gen_ci_plot(accs, fig, ax, color="g")
     fig, ax = gen_ci_plot(random_accs, fig, ax, color="r")
     fig, ax = gen_ci_plot(uncertainty_accs, fig, ax, color="b")
-
+    # fig.legend(loc="center right")
     pass
