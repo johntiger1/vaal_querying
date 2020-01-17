@@ -61,7 +61,7 @@ def environment_step(train_dataloader, solver, task_model, num_repeats=3):
 returns the delta, as well as the actual performance
 '''
 def compute_reward(curr_state, time_step, prev_reward):
-    curr_state = curr_state[:,0:5].detach()
+    curr_state = curr_state[:,0:5].detach() #the rward should give 5 signals!
     curr_reward = torch.mean(curr_state) - torch.mean(prev_reward)
     prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
 
@@ -384,10 +384,10 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
 
 def rl_main(args):
 
-    args.rl_batch_steps = 2
+    args.rl_batch_steps = 10
     args.num_episodes = 100
 
-    args.epsilon = 0.0 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -413,6 +413,21 @@ def rl_main(args):
         args.budget = 1 #how many we can label at each round
         args.initial_budget = 1
         args.num_classes = 5
+
+    elif args.dataset == "mnist":
+        print("Using MNIST dataset...")
+        test_dataloader = data.DataLoader(
+            MNIST(args.data_path),
+            batch_size=args.batch_size, drop_last=False
+        )
+
+        train_dataset = MNIST(args.data_path)
+        print(len(train_dataset))
+        args.num_images = 2500
+        args.budget = 1  # how many we can label at each round
+        args.initial_budget = 1
+        args.num_classes = 10
+
 
     random.seed(args.torch_manual_seed)
     torch.manual_seed(args.torch_manual_seed)
@@ -1049,7 +1064,9 @@ def main(args):
 
     best_data_point = None
     total_optimal =0
-    task_model = model.FCNet(num_classes=args.num_classes)
+
+    task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+    # task_model = model.FCNet(num_classes=args.num_classes)
 
     for split in splits:
         task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
@@ -1403,20 +1420,24 @@ if __name__ == '__main__':
     else:
         args.device = torch.device('cpu')
 
+    args.gen_plots = False
 
+    if args.gen_plots:
 
-    # this is a target for parallelization
-    import torch
-    for i in range(0, 25):
-        rand_run = torch.randint(high=1000000, size=())
-        args.log_name = "kl_penalty_{}".format(i)
-        args.torch_manual_seed = rand_run
+        # this is a target for parallelization
+        import torch
+        for i in range(0, 30):
+            rand_run = torch.randint(high=1000000, size=())
+            args.log_name = "kl_penalty_{}".format(i)
+            args.torch_manual_seed = rand_run
 
-        args.out_path = "/scratch/gobi1/johnchen/vaal_results/{}".format(args.log_name )
+            args.out_path = "/scratch/gobi1/johnchen/vaal_results/side_tests/{}".format(args.log_name )
 
-        # main(args)
+            # main(args)
 
-        if not os.path.exists(args.out_path):
-            os.mkdir(args.out_path)
+            if not os.path.exists(args.out_path):
+                os.mkdir(args.out_path)
 
-        rl_main(args)
+            rl_main(args)
+
+    rl_main(args)
