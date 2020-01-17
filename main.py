@@ -384,8 +384,8 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
 
 def rl_main(args):
 
-    args.rl_batch_steps = 10
-    args.num_episodes = 100
+    args.rl_batch_steps = 2
+    args.num_episodes = 150
 
     args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
@@ -1428,10 +1428,10 @@ if __name__ == '__main__':
         import torch
         for i in range(0, 30):
             rand_run = torch.randint(high=1000000, size=())
-            args.log_name = "kl_penalty_{}".format(i)
+            # args.log_name = "kl_penalty_{}".format(i)
             args.torch_manual_seed = rand_run
 
-            args.out_path = "/scratch/gobi1/johnchen/vaal_results/side_tests/{}".format(args.log_name )
+            args.out_path = os.path.join(args.out_path, args.log_name )
 
             # main(args)
 
