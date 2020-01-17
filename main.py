@@ -60,8 +60,8 @@ def environment_step(train_dataloader, solver, task_model, num_repeats=3):
 '''
 returns the delta, as well as the actual performance
 '''
-def compute_reward(curr_state, time_step, prev_reward):
-    curr_state = curr_state[:,0:5].detach() #the rward should give 5 signals!
+def compute_reward(curr_state, time_step, prev_reward,args):
+    curr_state = curr_state[:,0:args.num_classes].detach() #the rward should give 5 signals!
     curr_reward = torch.mean(curr_state) - torch.mean(prev_reward)
     prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
 
@@ -196,6 +196,9 @@ args:
 
 def get_query_via_kmeans(action, unlabelled_data, args):
 
+    print("these are some action zero statistics")
+    print(action.probs)
+    print((action.probs<0).nonzero())
 
     rand = False
     if torch.rand(size=()) < args.epsilon:
@@ -384,8 +387,8 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
 
 def rl_main(args):
 
-    args.rl_batch_steps = 2
-    args.num_episodes = 150
+    args.rl_batch_steps = 5
+    args.num_episodes = 100
 
     args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
@@ -476,6 +479,7 @@ def rl_main(args):
     task_model = model.FCNet(num_classes=args.num_classes)
     # inference_model = task_model
     # inference_model.to(args.device)
+    # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
 
     accuracies = []
     criterion = torch.nn.CrossEntropyLoss()
@@ -492,11 +496,12 @@ def rl_main(args):
     idx =    np.expand_dims(idx.numpy()[unlabeled_indices], 1)
     # X = np.hstack((features,labels ,idx )) #strange that this doesn't work
 
+    # X = np.concatenate((features.reshape(len(features),-1), labels,idx), axis=1)
     X = np.concatenate((features, labels,idx), axis=1)
 
 
     from sklearn.cluster import KMeans
-    kmeans_obj = KMeans(n_clusters=5, random_state=0)  # we can also fit one kmeans at the very start.
+    kmeans_obj = KMeans(n_clusters=args.num_classes, random_state=0)  # we can also fit one kmeans at the very start.
     cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
 
     oracle_clusters = False
@@ -629,7 +634,7 @@ def rl_main(args):
         # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
         if not rand or rand:
 
-            reward, prev_reward = compute_reward(curr_state, i, prev_reward) # basline is around 1% improvement
+            reward, prev_reward = compute_reward(curr_state, i, prev_reward,args) # basline is around 1% improvement
             print("prev_reward{}".format(prev_reward))
             print("curr reward{}".format(reward))
 
@@ -644,7 +649,7 @@ def rl_main(args):
             loss *= -1 #want to maximize the reward
 
             args.penalty_type = "kl"
-            p_dist = curr_state[:,5:].clone()
+            p_dist = curr_state[:,args.num_classes:].clone()
 
             if args.penalty_type == "kl":
 
@@ -733,6 +738,7 @@ def rl_main(args):
         # inference_model = task_model
         # inference_model.to(args.device)
         task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
+        # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
 
         # graph the train dataloader at each iteration
 
@@ -754,7 +760,7 @@ def rl_main(args):
             train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch,axis=1)), axis=1)
             visual_labelled_dataset = np.concatenate((visual_labelled_dataset, train_ex_batch), axis=0 ) #concat the
 
-        visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints)
+        # visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints)
             #     stack all of them!
             # and furthermore, we need to do a group by on the label.
 
@@ -767,6 +773,12 @@ def rl_main(args):
         # graph the new point on the map, then graph the old collection of data as regular
 
         # current_indices
+
+
+    # save the trained model
+    model_params = pol_class_net.state_dict()
+    torch.save(model_params, os.path.join(args.out_path, "model.pt"))
+
 
 
     #
@@ -1065,8 +1077,7 @@ def main(args):
     best_data_point = None
     total_optimal =0
 
-    task_model = vgg.vgg16_bn(num_classes=args.num_classes)
-    # task_model = model.FCNet(num_classes=args.num_classes)
+    task_model = model.FCNet(num_classes=args.num_classes)
 
     for split in splits:
         task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
@@ -1412,7 +1423,7 @@ def query_analysis(queried_indices, unlabeled_dataloader, args, split):
 
 if __name__ == '__main__':
     args = arguments.get_args()
-    torch.manual_seed(args.torch_manual_seed)
+    torch.manual_seed(int(args.torch_manual_seed))
 
     args.device = None
     if args.cuda and torch.cuda.is_available():
@@ -1421,23 +1432,32 @@ if __name__ == '__main__':
         args.device = torch.device('cpu')
 
     args.gen_plots = False
+    args.out_path = os.path.join(args.out_path, args.log_name)
+    if not os.path.exists(args.out_path):
+        os.mkdir(args.out_path)
 
     if args.gen_plots:
 
         # this is a target for parallelization
         import torch
+        root_dir = args.out_path
         for i in range(0, 30):
             rand_run = torch.randint(high=1000000, size=())
             # args.log_name = "kl_penalty_{}".format(i)
             args.torch_manual_seed = rand_run
+            subdir = "kl_penalty_{}".format(i)
 
-            args.out_path = os.path.join(args.out_path, args.log_name )
-
-            # main(args)
-
+            print("this is out path")
+            print(args.out_path)
+            args.out_path = os.path.join(root_dir, subdir)
+            
             if not os.path.exists(args.out_path):
                 os.mkdir(args.out_path)
+            # main(args)
+
+
 
             rl_main(args)
+    else:
 
-    rl_main(args)
+        rl_main(args)
