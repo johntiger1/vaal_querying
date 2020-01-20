@@ -165,7 +165,7 @@ def load_data(path, pattern="kl_penalty"):
     return all_accs
     pass
 
-def load_data_baselines(path,  pattern="kl_penalty", mode="kl_penalty", num_samples=20):
+def load_data_baselines(path,  pattern="kl_penalty", mode="kl_penalty", num_samples=29):
     # we can glob the entire path
     #
     import os
@@ -262,6 +262,9 @@ def gen_ci_plot(accs, fig, ax, color="g"):
     # means = means.reshape((-1, len(means)))
     std_devs = np.sqrt(means * (100 - means) / num_samples)
     std_vars = means * (100 - means) / num_samples
+    std_devs_across = np.std(means)
+    print(color, std_devs_across) #lower stddev
+
 
     # ax.plot(x, std_vars, label="std_vars", color=color)
 
@@ -310,6 +313,8 @@ def gen_ci_plot(accs, fig, ax, color="g"):
 
 
 if __name__ == "__main__":
+    
+
     accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results")
     random_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="random")
     uncertainty_accs = load_data_baselines("/scratch/gobi1/johnchen/vaal_results", mode="uncertainty")
