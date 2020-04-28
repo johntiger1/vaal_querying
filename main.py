@@ -11,6 +11,8 @@ import os
 from custom_datasets import *
 import model
 import vgg
+
+import torchvision.models as models
 from solver import Solver
 from utils import *
 import arguments
@@ -344,7 +346,7 @@ def random_baseline(args, num_iters=100):
             train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch, axis=1)), axis=1)
             visual_labelled_dataset = np.concatenate((visual_labelled_dataset, train_ex_batch), axis=0)  # concat the
 
-        visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints_batch, args.sampling_method)
+        # visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints_batch, args.sampling_method)
 
     return accuracies
 
@@ -387,10 +389,10 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
 
 def rl_main(args):
 
-    args.rl_batch_steps = 5
-    args.num_episodes = 100
+    args.episode_length = 1
+    args.num_episodes = 10
 
-    args.epsilon = 0.25 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.0 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -469,6 +471,13 @@ def rl_main(args):
     CLASS_DIST_SPACE = args.num_classes
 
     pol_class_net = PolicyNet(STATE_SPACE + CLASS_DIST_SPACE, ACTION_SPACE ) # gradient, or hessian in the network..; per class accs as well
+
+
+    args.old_model_path = "/h/johnchen/Desktop/git_stuff/vaal_querying/testing_zero/bs_16/model.pt"
+
+    if os.path.exists(args.old_model_path):
+
+        pol_class_net.load_state_dict(torch.load(args.old_model_path))
     pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-2)
 
 
@@ -504,7 +513,7 @@ def rl_main(args):
     kmeans_obj = KMeans(n_clusters=args.num_classes, random_state=0)  # we can also fit one kmeans at the very start.
     cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
 
-    oracle_clusters = False
+    oracle_clusters = True
 
     if oracle_clusters:
         unlabelled_dataset = np.concatenate((X, labels), axis=1)
@@ -552,10 +561,10 @@ def rl_main(args):
 
     fig.show()
 
-    gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
+    # gradient_accum = torch.zeros((args.rl_batch_steps, 1), requires_grad=False) # accumulate all the losses
 
     # try making it an empty thing
-    gradient_accum = torch.zeros((args.rl_batch_steps), requires_grad=False) # accumulate all the losses
+    gradient_accum = torch.zeros((args.episode_length), requires_grad=False) # accumulate all the losses
 
     # loss.backward(0 => doesn't actually execute an update of the weights. we could probably call loss.backward individually
 
@@ -565,200 +574,208 @@ def rl_main(args):
     # try combining it with the state. and also, just try doing an epsilon greedy policy
     import torch.nn.functional as F
     for i in tqdm(range(args.num_episodes)):
-        pol_optimizer.zero_grad()
-
-        # here we need a fake label, in order to back prop the loss. And don't backprop immediately, instead, get the gradient,
-        # hold it, wait for the reward, and then backprop on that quantity
-        action_vector = pol_class_net (curr_state )
-        # torch.nn.functional.log_softmax(action_vector)
-        # action_dist = torch.zeros((1))
-        action_dist = torch.distributions.Categorical(probs=F.softmax(action_vector)) #the diff between Softmax and softmax
-
-        # we probably need logsoftmax here too
-        print("action dist{}\n, dist probs{}\n, self f.softmax {}\n, self.log softmax{}\n".format(action_vector,action_dist.probs,
-                                                                                              F.softmax(action_vector, dim=1),
-                                                                                              F.log_softmax(action_vector,
-                                                                                                        dim=1))) #intelligent to take the softmax over the right dimension
-        # print() #recall logsoftmax and such
-
-        # if torch.rand() < args.epsilon:
-        #     pass
-        # else:
-        # correct_label1, action1 = get_query(action_dist, unlabeled_dataloader, inference_model, args)
-        correct_label, action, unlabelled_dataset, rand = get_query_via_kmeans(action_dist, unlabelled_dataset, args)
 
 
+        for j in range(args.episode_length):
+            pol_optimizer.zero_grad()
 
+            # here we need a fake label, in order to back prop the loss. And don't backprop immediately, instead, get the gradient,
+            # hold it, wait for the reward, and then backprop on that quantity
+            action_vector = pol_class_net (curr_state )
+            # torch.nn.functional.log_softmax(action_vector)
+            # action_dist = torch.zeros((1))
 
+            # the huge bug is as follows:
+            # make the network output a softmax
+            # then, the loss is the cross entropy:
 
+            action_dist = torch.distributions.Categorical(probs=F.softmax(action_vector)) #the diff between Softmax and softmax
 
-        if not rand or rand: #still compute the losses to avoid policy collpase
-            # print(rand)
-            pred_vector = action_vector.view(1,-1)
-            correct_label = correct_label # just a k-size list
-            loss = criterion(pred_vector, correct_label)
+            # we probably need logsoftmax here too
+            print("action dist{}\n, dist probs{}\n, self f.softmax {}\n, self.log softmax{}\n".format(action_vector,action_dist.probs,
+                                                                                                  F.softmax(action_vector, dim=1),
+                                                                                                  F.log_softmax(action_vector,
+                                                                                                            dim=1))) #intelligent to take the softmax over the right dimension
+            # print() #recall logsoftmax and such
 
-            print("loss stats")
-            print(pred_vector, correct_label)
+            # if torch.rand() < args.epsilon:
+            #     pass
+            # else:
+            # correct_label1, action1 = get_query(action_dist, unlabeled_dataloader, inference_model, args)
+            correct_label, action, unlabelled_dataset, rand = get_query_via_kmeans(action_dist, unlabelled_dataset, args)
 
 
 
 
-        # labelled updates
-        current_indices = list(current_indices) + [int(action[2].item())] # really they just want a set here...
-        sampler = data.sampler.SubsetRandomSampler(current_indices)
-        train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
-                                           batch_size=args.batch_size, drop_last=False)
 
-        # unlabelled updates
-        unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
-        unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
-        unlabeled_dataloader = data.DataLoader(train_dataset,
-                                               sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
-        class_counts, total = dataloader_statistics(train_dataloader, args.num_classes)
-        print("class counts {}".format(class_counts))
+            if not rand  : #still compute the losses to avoid policy collpase
+                # print(rand)
+                pred_vector = F.softmax(action_vector.view(1,-1))
+                correct_label = correct_label # just a k-size list
+                loss = criterion(pred_vector, correct_label)
+
+                print("loss stats")
+                print(pred_vector, correct_label)
 
 
 
-        #data loader not subscriptable => we should deal with the indices.
-        # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
-        # lets just try the dataloader, but it will be challenging when we have the batch size...
-        # print(correct_label)
-        print("this is the action taken by the sampler")
-        print(action)
 
-        acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
-        accuracies.append(acc)
+            # labelled updates
+            current_indices = list(current_indices) + [int(action[2].item())] # really they just want a set here...
+            sampler = data.sampler.SubsetRandomSampler(current_indices)
+            train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
+                                               batch_size=args.batch_size, drop_last=False)
 
-        # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
-        if not rand or rand:
+            # unlabelled updates
+            unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
+            unlabeled_sampler = data.sampler.SubsetRandomSampler(unlabeled_indices)
+            unlabeled_dataloader = data.DataLoader(train_dataset,
+                                                   sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
-            reward, prev_reward = compute_reward(curr_state, i, prev_reward,args) # basline is around 1% improvement
-            print("prev_reward{}".format(prev_reward))
-            print("curr reward{}".format(reward))
-
-            # print("log loss is")
-            # print(loss)
-
-            # check what the norm of the policy is
-            # if torch.sum(loss) <= 0.005:
-            #     loss +=0.005 #to avoid policy collapse
-
-            loss *= reward # calling loss backwards here works
-            loss *= -1 #want to maximize the reward
-
-            args.penalty_type = "kl"
-            p_dist = curr_state[:,args.num_classes:].clone()
-
-            if args.penalty_type == "kl":
-
-            # add the penalty as well
-                p_dist /= torch.sum(p_dist) #normalize
-
-
-            # KL penalty
-                q_dist = torch.ones((1, args.num_classes),requires_grad=True)
-                q_dist = q_dist* 1/(args.num_classes) #normalize this
-
-
-            # add delta smoothing
-                mcp_loss  = mode_collapse_penalty_kl(action_dist.probs.clone(), q_dist )
-            else:
-
-            # Square penalty
-                q_dist = torch.ones((1, args.num_classes), requires_grad=True)
-                q_dist = q_dist  * i//args.num_classes+1
-                mcp_loss = mode_collapse_penalty(p_dist, q_dist)
-
-            args.mc_alpha = 8
-            print(loss, mcp_loss)
-
-            # loss = mcp_loss #this detracts from the reward
-            loss = loss + args.mc_alpha * mcp_loss
-            print("total loss")
-            print(loss)
-
-            gradient_accum[i% args.rl_batch_steps] = loss
-
-            # tess = torch.mean(gradient_accum)
-            # print('tess')
-            # print(tess)
-            # tess.backward()
-
-        if i % args.rl_batch_steps==0 and i!=0:
-
-            # HER buffer dataloader here: we remember what the choice was, and the reward. then we can decouple the updates!
-            # but generally, we should try the baseline (easy)
-
-            print("the gradient is")
-            print(gradient_accum)
-
-
-            # let's prevent the policy collapse
-            gradient_accum = gradient_accum[gradient_accum.nonzero()] #filter out the points where we took the epsilon policy
-
-            print(gradient_accum)
-            # gradient_accum = torch.clamp(gradient_accum, -10, 10)
-            # torch.mean(gradient_accum, dim=0).backward()
-            if len(gradient_accum) > 0:
-                batched_loss = torch.mean(gradient_accum, dim=0)
-                print(batched_loss )
-                batched_loss.backward()
-
-
-                pol_optimizer.step()
-
-            # print(list(pol_class_net.parameters())[0].grad )
-
-            gradient_accum = torch.zeros((args.rl_batch_steps), requires_grad=False)  # accumulate all the losses
-            batched_accs.append(acc)
-
-            # now on the next step, you want to run some gradient and see how it goes. and only graph that. Equivalently,
-            # just graph every 10th datapoint
-
-            # args.epsilon *= 0.6
-             #perform the gradient update
-        #     compute the reward. store the gradients
-        # store all the gradients, then torch.mean them, and then take a step. This means we only have 10/50 steps.
-
-        # loss.backward()
-        # pol_optimizer.step()
-
-        with open(os.path.join(args.out_path, "accs.txt"), "a") as acc_file:
-            acc_file.write("{};{}\n".format(acc, curr_state))
-
-
-        print(curr_state)
-        print(acc)
-
-        # with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
-        #     acc_file.write("{} {}\n".format(acc, class_accs))
-
-        # inference_model = task_model
-        # inference_model.to(args.device)
-        task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
-        # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
-
-        # graph the train dataloader at each iteration
+            class_counts, total = dataloader_statistics(train_dataloader, args.num_classes)
+            print("class counts {}".format(class_counts))
 
 
 
-        # for cluster in range(args.num_classes):
-        #     # k_means_data  = unlabelled_dataset[unlabelled_dataset[...,-1]==cluster]
-        #     # fig, ax = plt.subplots()
-        #
-        #     k_means_data = unlabelled_dataset[unlabelled_dataset[:, -1] == cluster]
-        #
-        #     ax.scatter(k_means_data[:, 0], k_means_data[:, 1])
-        #     ax.scatter(kmeans_obj.cluster_centers_[cluster][0], kmeans_obj.cluster_centers_[cluster][1], s=100)
-        #     fig.savefig(os.path.join(args.out_path, "cluster_{}".format(cluster)))
-        visual_labelled_dataset = np.zeros((0,3)) #each dimension does not require something new!
+            #data loader not subscriptable => we should deal with the indices.
+            # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
+            # lets just try the dataloader, but it will be challenging when we have the batch size...
+            # print(correct_label)
+            print("this is the action taken by the sampler")
+            print(action)
 
-        new_datapoints= np.reshape(np.asarray(action[0]), newshape=(-1,2))
-        for datapoint_batch, label_batch, _ in train_dataloader: #will be tuple of n by 1
-            train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch,axis=1)), axis=1)
-            visual_labelled_dataset = np.concatenate((visual_labelled_dataset, train_ex_batch), axis=0 ) #concat the
+            acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
+            accuracies.append(acc)
+
+            # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
+            if not rand :
+
+                reward, prev_reward = compute_reward(curr_state, i, prev_reward,args) # basline is around 1% improvement
+                print("prev_reward{}".format(prev_reward))
+                print("curr reward{}".format(reward))
+
+                # print("log loss is")
+                # print(loss)
+
+                # check what the norm of the policy is
+                # if torch.sum(loss) <= 0.005:
+                #     loss +=0.005 #to avoid policy collapse
+
+                loss *= reward # calling loss backwards here works
+                loss *= -1 #want to maximize the reward
+                #
+                # args.penalty_type = "kl"
+                # p_dist = curr_state[:,args.num_classes:].clone()
+                #
+                # if args.penalty_type == "kl":
+                #
+                # # add the penalty as well
+                #     p_dist /= torch.sum(p_dist) #normalize
+                #
+                #
+                # # KL penalty
+                #     q_dist = torch.ones((1, args.num_classes),requires_grad=True)
+                #     q_dist = q_dist* 1/(args.num_classes) #normalize this
+                #
+                #
+                # # add delta smoothing
+                #     mcp_loss  = mode_collapse_penalty_kl(action_dist.probs.clone(), q_dist )
+                # else:
+                #
+                # # Square penalty
+                #     q_dist = torch.ones((1, args.num_classes), requires_grad=True)
+                #     q_dist = q_dist  * i//args.num_classes+1
+                #     mcp_loss = mode_collapse_penalty(p_dist, q_dist)
+                #
+                # args.mc_alpha = 0
+                # print(loss, mcp_loss)
+                #
+                # # loss = mcp_loss #this detracts from the reward
+                # loss = loss + args.mc_alpha * mcp_loss
+                # print("total loss")
+                # print(loss)
+
+                gradient_accum[j] = loss
+
+                # tess = torch.mean(gradient_accum)
+                # print('tess')
+                # print(tess)
+                # tess.backward()
+
+            if True:
+
+                # HER buffer dataloader here: we remember what the choice was, and the reward. then we can decouple the updates!
+                # but generally, we should try the baseline (easy)
+
+                print("the gradient is")
+                print(gradient_accum)
+
+
+                # let's prevent the policy collapse
+                gradient_accum = gradient_accum[gradient_accum.nonzero()] #filter out the points where we took the epsilon policy
+
+                print(gradient_accum)
+                # gradient_accum = torch.clamp(gradient_accum, -10, 10)
+                # torch.mean(gradient_accum, dim=0).backward()
+                if len(gradient_accum) > 0:
+                    batched_loss = torch.mean(gradient_accum, dim=0)
+                    print(batched_loss )
+                    batched_loss.backward()
+
+
+                    pol_optimizer.step()
+
+                # print(list(pol_class_net.parameters())[0].grad )
+
+                gradient_accum = torch.zeros((args.rl_batch_steps), requires_grad=False)  # accumulate all the losses
+                batched_accs.append(acc)
+
+                # now on the next step, you want to run some gradient and see how it goes. and only graph that. Equivalently,
+                # just graph every 10th datapoint
+
+                # args.epsilon *= 0.6
+                 #perform the gradient update
+            #     compute the reward. store the gradients
+            # store all the gradients, then torch.mean them, and then take a step. This means we only have 10/50 steps.
+
+            # loss.backward()
+            # pol_optimizer.step()
+
+            with open(os.path.join(args.out_path, "accs.txt"), "a") as acc_file:
+                acc_file.write("{};{}\n".format(acc, curr_state))
+
+
+            print(curr_state)
+            print(acc)
+
+            # with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
+            #     acc_file.write("{} {}\n".format(acc, class_accs))
+
+            # inference_model = task_model
+            # inference_model.to(args.device)
+            task_model = model.FCNet(num_classes=args.num_classes) # remake a new task model each time
+            # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+
+            # graph the train dataloader at each iteration
+
+
+
+            # for cluster in range(args.num_classes):
+            #     # k_means_data  = unlabelled_dataset[unlabelled_dataset[...,-1]==cluster]
+            #     # fig, ax = plt.subplots()
+            #
+            #     k_means_data = unlabelled_dataset[unlabelled_dataset[:, -1] == cluster]
+            #
+            #     ax.scatter(k_means_data[:, 0], k_means_data[:, 1])
+            #     ax.scatter(kmeans_obj.cluster_centers_[cluster][0], kmeans_obj.cluster_centers_[cluster][1], s=100)
+            #     fig.savefig(os.path.join(args.out_path, "cluster_{}".format(cluster)))
+            visual_labelled_dataset = np.zeros((0,3)) #each dimension does not require something new!
+
+            new_datapoints= np.reshape(np.asarray(action[0]), newshape=(-1,2))
+            for datapoint_batch, label_batch, _ in train_dataloader: #will be tuple of n by 1
+                train_ex_batch = np.concatenate((datapoint_batch, np.expand_dims(label_batch,axis=1)), axis=1)
+                visual_labelled_dataset = np.concatenate((visual_labelled_dataset, train_ex_batch), axis=0 ) #concat the
 
         # visualize_training_dataset(i, args.num_classes, visual_labelled_dataset, new_datapoints)
             #     stack all of them!
