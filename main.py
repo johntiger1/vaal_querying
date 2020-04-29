@@ -33,7 +33,7 @@ Simulates a step of the environment. Returns the new state, and the next dynamic
 Returns a next state: 1x10 vector
 
 '''
-def environment_step(train_dataloader, solver, task_model, num_repeats=3):
+def environment_step(train_dataloader, solver, task_model, num_repeats=1):
 
     accs = torch.zeros((num_repeats,1))
     class_accs_across_runs = torch.zeros((num_repeats,5))
@@ -59,6 +59,13 @@ def environment_step(train_dataloader, solver, task_model, num_repeats=3):
     next_state_vector = torch.cat((mean_class_accs , mean_class_counts), axis=0)
 
     return torch.mean(accs), next_state_vector.t()
+
+'''simply gets the reward as the acc'''
+def compute_reward_clean(curr_state):
+    curr_state = curr_state[:,0:args.num_classes].detach()
+
+    return torch.mean(curr_state)
+
 '''
 returns the delta, as well as the actual performance
 '''
@@ -197,7 +204,7 @@ args:
 '''
 
 def get_query_via_kmeans(action, unlabelled_data, args):
-
+    # data is [features, label, idx, pseudo_label]
     print("these are some action zero statistics")
     print(action.probs)
     print((action.probs<0).nonzero())
@@ -387,12 +394,59 @@ def visualize_training_dataset(iteration, num_classes, prev_dataset, new_datapoi
     plt.close(fig)
 
 
+'''
+function which computes the REINFORCE paramter updates
+'''
+def learn(y,y_pred, reward, criterion, optim):
+    '''assert the loss is indeed the CE loss'''
+
+    loss = criterion( y_pred, y)
+    loss = reward * loss
+    loss *= -1
+
+    optim.zero_grad()
+    loss.backward()
+    optim.step()
+
+
+def discount_rewards(r):
+    GAMMA = 0.9
+    discounted_r = torch.zeros(r.size())
+    running_add = 0
+    for t in reversed(range(len(r))):
+        print("Step: {}".format(t))
+        running_add = running_add * GAMMA + r[t]  # we slowly accumulate the reward into all of the steps along the way
+        discounted_r[t] = running_add
+    # therefore, this has the effect of adding the rewards back into the original actions..
+
+    # print(r)
+    # print(discounted_r)
+    return discounted_r
+
+'''
+Processes the reward, like reward normalization and importantly,
+GAMMA DISCOUNTING.
+'''
+#TODO: use logging instead of copious prints
+def process_reward(reward_history):
+    print("processed reward; reward is now")
+
+    adv = discount_rewards(reward_history)
+    processed_reward_history = adv
+    # processed_reward_history = (adv - adv.mean()) / (adv.std() + 1e-7)
+    print(reward_history)
+    print(processed_reward_history)
+    return processed_reward_history
+
 def rl_main(args):
+
+    # a full game, where you pick 10 examples
+    # args.mine_episodes = 10
 
     args.episode_length = 1
     args.num_episodes = 10
 
-    args.epsilon = 0.0 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.2 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -475,7 +529,7 @@ def rl_main(args):
 
     args.old_model_path = "/h/johnchen/Desktop/git_stuff/vaal_querying/testing_zero/bs_16/model.pt"
 
-    if os.path.exists(args.old_model_path):
+    if os.path.exists(args.old_model_path) and args.use_old:
 
         pol_class_net.load_state_dict(torch.load(args.old_model_path))
     pol_optimizer = optim.Adam(pol_class_net.parameters(), lr=5e-2)
@@ -513,7 +567,7 @@ def rl_main(args):
     kmeans_obj = KMeans(n_clusters=args.num_classes, random_state=0)  # we can also fit one kmeans at the very start.
     cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
 
-    oracle_clusters = True
+    oracle_clusters = False
 
     if oracle_clusters:
         unlabelled_dataset = np.concatenate((X, labels), axis=1)
@@ -575,6 +629,10 @@ def rl_main(args):
     import torch.nn.functional as F
     for i in tqdm(range(args.num_episodes)):
 
+        # need y, y_pred and the reward
+        action_history = torch.FloatTensor([])
+        reward_history = torch.FloatTensor([])
+        taken_action_history = torch.LongTensor([])
 
         for j in range(args.episode_length):
             pol_optimizer.zero_grad()
@@ -588,8 +646,12 @@ def rl_main(args):
             # the huge bug is as follows:
             # make the network output a softmax
             # then, the loss is the cross entropy:
-
+            print(F.softmax(action_vector))
+            if (len(F.softmax(action_vector)[F.softmax(action_vector)<0]) > 0 ):
+                print("huh 0 probs!!")
             action_dist = torch.distributions.Categorical(probs=F.softmax(action_vector)) #the diff between Softmax and softmax
+
+            action_history = torch.cat([action_history, action_dist.probs])
 
             # we probably need logsoftmax here too
             print("action dist{}\n, dist probs{}\n, self f.softmax {}\n, self.log softmax{}\n".format(action_vector,action_dist.probs,
@@ -606,6 +668,7 @@ def rl_main(args):
 
 
 
+            taken_action_history = torch.cat([taken_action_history, torch.LongTensor([(correct_label)])])
 
 
 
@@ -646,101 +709,19 @@ def rl_main(args):
             print(action)
 
             acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
+
+
+            reward = compute_reward_clean(curr_state) #move the reward to the env. step.
+            reward_history = torch.cat([reward_history, reward.unsqueeze(0)])
+
             accuracies.append(acc)
 
-            # curr_state = torch.cat((curr_state_accs, class_counts.t()), axis=1)
-            if not rand :
-
-                reward, prev_reward = compute_reward(curr_state, i, prev_reward,args) # basline is around 1% improvement
-                print("prev_reward{}".format(prev_reward))
-                print("curr reward{}".format(reward))
-
-                # print("log loss is")
-                # print(loss)
-
-                # check what the norm of the policy is
-                # if torch.sum(loss) <= 0.005:
-                #     loss +=0.005 #to avoid policy collapse
-
-                loss *= reward # calling loss backwards here works
-                loss *= -1 #want to maximize the reward
-                #
-                # args.penalty_type = "kl"
-                # p_dist = curr_state[:,args.num_classes:].clone()
-                #
-                # if args.penalty_type == "kl":
-                #
-                # # add the penalty as well
-                #     p_dist /= torch.sum(p_dist) #normalize
-                #
-                #
-                # # KL penalty
-                #     q_dist = torch.ones((1, args.num_classes),requires_grad=True)
-                #     q_dist = q_dist* 1/(args.num_classes) #normalize this
-                #
-                #
-                # # add delta smoothing
-                #     mcp_loss  = mode_collapse_penalty_kl(action_dist.probs.clone(), q_dist )
-                # else:
-                #
-                # # Square penalty
-                #     q_dist = torch.ones((1, args.num_classes), requires_grad=True)
-                #     q_dist = q_dist  * i//args.num_classes+1
-                #     mcp_loss = mode_collapse_penalty(p_dist, q_dist)
-                #
-                # args.mc_alpha = 0
-                # print(loss, mcp_loss)
-                #
-                # # loss = mcp_loss #this detracts from the reward
-                # loss = loss + args.mc_alpha * mcp_loss
-                # print("total loss")
-                # print(loss)
-
-                gradient_accum[j] = loss
-
-                # tess = torch.mean(gradient_accum)
-                # print('tess')
-                # print(tess)
-                # tess.backward()
-
-            if True:
-
-                # HER buffer dataloader here: we remember what the choice was, and the reward. then we can decouple the updates!
-                # but generally, we should try the baseline (easy)
-
-                print("the gradient is")
-                print(gradient_accum)
 
 
-                # let's prevent the policy collapse
-                gradient_accum = gradient_accum[gradient_accum.nonzero()] #filter out the points where we took the epsilon policy
-
-                print(gradient_accum)
-                # gradient_accum = torch.clamp(gradient_accum, -10, 10)
-                # torch.mean(gradient_accum, dim=0).backward()
-                if len(gradient_accum) > 0:
-                    batched_loss = torch.mean(gradient_accum, dim=0)
-                    print(batched_loss )
-                    batched_loss.backward()
-
-
-                    pol_optimizer.step()
-
-                # print(list(pol_class_net.parameters())[0].grad )
-
-                gradient_accum = torch.zeros((args.rl_batch_steps), requires_grad=False)  # accumulate all the losses
-                batched_accs.append(acc)
-
-                # now on the next step, you want to run some gradient and see how it goes. and only graph that. Equivalently,
-                # just graph every 10th datapoint
-
-                # args.epsilon *= 0.6
-                 #perform the gradient update
-            #     compute the reward. store the gradients
-            # store all the gradients, then torch.mean them, and then take a step. This means we only have 10/50 steps.
-
-            # loss.backward()
-            # pol_optimizer.step()
+        # end of episode; compute the reward and go forth!
+        if True:
+            processed_reward_history = process_reward(reward_history)
+            learn(taken_action_history, action_history , processed_reward_history, criterion, pol_optimizer)
 
             with open(os.path.join(args.out_path, "accs.txt"), "a") as acc_file:
                 acc_file.write("{};{}\n".format(acc, curr_state))
@@ -1450,6 +1431,7 @@ if __name__ == '__main__':
 
     args.gen_plots = False
     args.out_path = os.path.join(args.out_path, args.log_name)
+    args.use_old = False
     if not os.path.exists(args.out_path):
         os.mkdir(args.out_path)
 
