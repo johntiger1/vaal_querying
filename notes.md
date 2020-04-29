@@ -1,6 +1,9 @@
 # April 29
 Working on getting the environment assumptions oF RL working! In particular: we need to RESET the environment to some original baseline EACH TIME! 
 
+Resetting:
+1. Unlabel all the datapoints, OR JUST DUMP THE TRAIN DATALOADER (OK!)
+
 # April 28
 Got the policy gradient (correct implementation working).
 
