@@ -68,7 +68,7 @@ def compute_reward_clean(curr_state):
 
 def compute_reward_clean_smoothed(curr_state, time_step, prev_reward):
     curr_state = curr_state[:,0:args.num_classes].detach() #the rward should give 5 signals!
-    curr_reward = torch.mean(curr_state) - torch.mean(prev_reward) -(20+time_step*1)
+    curr_reward = torch.mean(curr_state) - torch.mean(prev_reward) -(20+time_step*2)
     prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
 
 
@@ -688,7 +688,7 @@ def rl_main(args):
             acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
 
 
-            reward,prev_reward = compute_reward_clean_smoothed(curr_state,j, prev_reward) #move the reward to the env. step.
+            reward,prev_reward = compute_reward_clean_smoothed(curr_state,i*args.episode_length+j, prev_reward) #move the reward to the env. step.
             reward_history = torch.cat([reward_history, reward.unsqueeze(0)])
 
             accuracies.append(acc)
