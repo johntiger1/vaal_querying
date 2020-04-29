@@ -68,7 +68,7 @@ def compute_reward_clean(curr_state):
 
 def compute_reward_clean_smoothed(curr_state, time_step, prev_reward):
     curr_state = curr_state[:,0:args.num_classes].detach() #the rward should give 5 signals!
-    curr_reward = torch.mean(curr_state) - torch.mean(prev_reward)
+    curr_reward = torch.mean(curr_state) - torch.mean(prev_reward) -(20+time_step*1)
     prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
 
 
@@ -619,7 +619,7 @@ def rl_main(args):
         action_history = torch.FloatTensor([])
         reward_history = torch.FloatTensor([])
         taken_action_history = torch.LongTensor([])
-        current_indices = [] #reset the current indices
+        # current_indices = [] #reset the current indices
         for j in range(args.episode_length):
             pol_optimizer.zero_grad()
 
