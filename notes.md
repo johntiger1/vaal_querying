@@ -3,6 +3,10 @@ Working on getting the environment assumptions oF RL working! In particular: we 
 
 Resetting:
 1. Unlabel all the datapoints, OR JUST DUMP THE TRAIN DATALOADER (OK!)
+2. Won't work exactly: since we DO implicitly have some state tracking over time...
+
+Even just defining the problem for this question is challenging! Amazing!
+
 
 Need to do LEARNABLE actions from FIRST principles: batching, environment reset, etc.
 
