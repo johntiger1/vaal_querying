@@ -66,6 +66,14 @@ def compute_reward_clean(curr_state):
 
     return torch.mean(curr_state)
 
+def compute_reward_clean_smoothed(curr_state, time_step, prev_reward):
+    curr_state = curr_state[:,0:args.num_classes].detach() #the rward should give 5 signals!
+    curr_reward = torch.mean(curr_state) - torch.mean(prev_reward)
+    prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
+
+
+    return curr_reward, prev_reward
+
 '''
 returns the delta, as well as the actual performance
 '''
@@ -579,29 +587,7 @@ def rl_main(args):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots()
 
-    # try and predict directly in the data space?
-    # try and graph where in the dataset it does it as well.
-    # in this case, we would again need some fix of the policy gradient.
-    # we can no longer just do an easy cross entropy
-    # instead, we would be operating more in the regime of .
-    # this is a nice analysis on problems of this type!
 
-    # just about rotating and sculpting to your particular area you want
-    # ultra few shot learning with fixed dimension, horizon!
-    # contributions: to the field of meta/few shot learning using an active learning with reinforcement learning approach
-    # keep on layering intersections, until you get the particular area you want.
-    # even the approach of doing few shot learning, using active learning is pretty novel IMO
-
-
-
-
-    # we would be trying to essentially do q learning on the choice of datapoint. but make sure you pick in the data space (not action, but continuous choice of the datapoint)
-    # the key is really then, trying to do X
-    # we could literally do an entire course of lin alg during the break!
-
-    # really, digging into the problems of policy gradient
-
-    # now let's graph the unlabelled dataset
     for cluster in range(args.num_classes):
         # k_means_data  = unlabelled_dataset[unlabelled_dataset[...,-1]==cluster]
         # fig, ax = plt.subplots()
@@ -633,7 +619,7 @@ def rl_main(args):
         action_history = torch.FloatTensor([])
         reward_history = torch.FloatTensor([])
         taken_action_history = torch.LongTensor([])
-
+        current_indices = [] #reset the current indices
         for j in range(args.episode_length):
             pol_optimizer.zero_grad()
 
@@ -646,7 +632,7 @@ def rl_main(args):
             # the huge bug is as follows:
             # make the network output a softmax
             # then, the loss is the cross entropy:
-            print(F.softmax(action_vector))
+            # print(F.softmax(action_vector))
             if (len(F.softmax(action_vector)[F.softmax(action_vector)<0]) > 0 ):
                 print("huh 0 probs!!")
             action_dist = torch.distributions.Categorical(probs=F.softmax(action_vector)) #the diff between Softmax and softmax
@@ -654,10 +640,12 @@ def rl_main(args):
             action_history = torch.cat([action_history, action_dist.probs])
 
             # we probably need logsoftmax here too
-            print("action dist{}\n, dist probs{}\n, self f.softmax {}\n, self.log softmax{}\n".format(action_vector,action_dist.probs,
-                                                                                                  F.softmax(action_vector, dim=1),
-                                                                                                  F.log_softmax(action_vector,
-                                                                                                            dim=1))) #intelligent to take the softmax over the right dimension
+            # print("action dist{}\n, dist probs{}\n, "
+            #       "self f.softmax {}\n, self.log softmax{}\n".format(action_vector,
+            #                                                          action_dist.probs,
+            #                                                          F.softmax(action_vector, dim=1),
+            #                                                                                       F.log_softmax(action_vector,
+            #                                                                                                 dim=1))) #intelligent to take the softmax over the right dimension
             # print() #recall logsoftmax and such
 
             # if torch.rand() < args.epsilon:
@@ -670,23 +658,12 @@ def rl_main(args):
 
             taken_action_history = torch.cat([taken_action_history, torch.LongTensor([(correct_label)])])
 
-
-
-            if not rand  : #still compute the losses to avoid policy collpase
-                # print(rand)
-                pred_vector = F.softmax(action_vector.view(1,-1))
-                correct_label = correct_label # just a k-size list
-                loss = criterion(pred_vector, correct_label)
-
-                print("loss stats")
-                print(pred_vector, correct_label)
-
-
-
-
             # labelled updates
             current_indices = list(current_indices) + [int(action[2].item())] # really they just want a set here...
             sampler = data.sampler.SubsetRandomSampler(current_indices)
+
+            # dump all the indices now
+
             train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                                                batch_size=args.batch_size, drop_last=False)
 
@@ -697,7 +674,7 @@ def rl_main(args):
                                                    sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
             class_counts, total = dataloader_statistics(train_dataloader, args.num_classes)
-            print("class counts {}".format(class_counts))
+            # print("class counts {}".format(class_counts))
 
 
 
@@ -705,16 +682,20 @@ def rl_main(args):
             # we could also combine, and get the uncertainties, but WEIGHTED BY CLASS
             # lets just try the dataloader, but it will be challenging when we have the batch size...
             # print(correct_label)
-            print("this is the action taken by the sampler")
-            print(action)
+            # print("this is the action taken by the sampler")
+            # print(action)
 
             acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
 
 
-            reward = compute_reward_clean(curr_state) #move the reward to the env. step.
+            reward,prev_reward = compute_reward_clean_smoothed(curr_state,j, prev_reward) #move the reward to the env. step.
             reward_history = torch.cat([reward_history, reward.unsqueeze(0)])
 
             accuracies.append(acc)
+            print(prev_reward)
+            print(action_dist.probs)
+            print(F.softmax(action_vector))
+
 
 
 
