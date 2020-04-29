@@ -627,9 +627,13 @@ def rl_main(args):
         action_history = torch.FloatTensor([])
         reward_history = torch.FloatTensor([])
         taken_action_history = torch.LongTensor([])
+
+
         # current_indices = [] #reset the current indices
-        # prev_reward = torch.ones((ROLLING_AVG_LEN, 1))
-        # prev_reward *= 20
+        if current_indices == []: #reset perf if we are also resetting current indices
+            prev_reward = torch.ones((ROLLING_AVG_LEN, 1))
+            prev_reward *= 20
+
         for j in range(args.episode_length):
             pol_optimizer.zero_grad()
 
