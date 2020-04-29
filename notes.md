@@ -9,6 +9,15 @@ Even just defining the problem for this question is challenging! Amazing!
 
 
 Need to do LEARNABLE actions from FIRST principles: batching, environment reset, etc.
+(Lmao curriculum learning myself; joint human curriculum learning in RL curriculum learning!)
+
+Also:
+we mainly figure out how important the RL reward function is. (ensuring 0 centered in particular).
+Also:
+
+THE BIG BET: we will need some sort of experience replay. SOmething like a "standard" environment of 50 candidates to evaluate, and train on, and prep, and then hoping it will generalize as we see more data!
+
+Stagewise RL; as we get more samples, we get exponentially more sequences. Lots of nice FUNDAMENTAL ways to motivate this problem!
 
 # April 28
 Got the policy gradient (correct implementation working).
