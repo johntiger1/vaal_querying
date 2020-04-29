@@ -1,4 +1,11 @@
-            # one other thing: doing a value network, or framing it as a regression problem
+# April 29
+Working on getting the environment assumptions oF RL working! In particular: we need to RESET the environment to some original baseline EACH TIME! 
+
+# April 28
+Got the policy gradient (correct implementation working).
+
+
+    # one other thing: doing a value network, or framing it as a regression problem
             # RL seems like the wrong formulation to do AL.
             
             
