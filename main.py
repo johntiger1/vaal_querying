@@ -408,6 +408,9 @@ function which computes the REINFORCE paramter updates
 '''
 def learn(y,y_pred, reward, criterion, optim):
     '''assert the loss is indeed the CE loss'''
+    print("why is the loss bounded?")
+    print("y_pred {}; y {}".format(y_pred,y))
+
 
     loss = criterion( y_pred, y) #auto applies the log softmax, so it should be same!
     print("og loss {}".format(loss))
@@ -642,9 +645,11 @@ def rl_main(args):
             # print(F.softmax(action_vector))
             if (len(F.softmax(action_vector)[F.softmax(action_vector)<0]) > 0 ):
                 print("huh 0 probs!!")
-            action_dist = torch.distributions.Categorical(probs=F.softmax(action_vector)) #the diff between Softmax and softmax
 
-            action_history = torch.cat([action_history, action_dist.probs])
+            action_probs = F.softmax(action_vector)
+            action_dist = torch.distributions.Categorical(probs=action_probs) #the diff between Softmax and softmax
+
+            action_history = torch.cat([action_history, action_vector])
 
             # we probably need logsoftmax here too
             # print("action dist{}\n, dist probs{}\n, "
