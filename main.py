@@ -460,7 +460,7 @@ def rl_main(args):
     # args.mine_episodes = 10
 
     args.episode_length = 10
-    args.num_episodes = 100
+    args.num_episodes = 10
 
     args.epsilon = 0.5 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
@@ -627,9 +627,9 @@ def rl_main(args):
         action_history = torch.FloatTensor([])
         reward_history = torch.FloatTensor([])
         taken_action_history = torch.LongTensor([])
-        current_indices = [] #reset the current indices
-        prev_reward = torch.ones((ROLLING_AVG_LEN, 1))
-        prev_reward *= 20
+        # current_indices = [] #reset the current indices
+        # prev_reward = torch.ones((ROLLING_AVG_LEN, 1))
+        # prev_reward *= 20
         for j in range(args.episode_length):
             pol_optimizer.zero_grad()
 
@@ -721,7 +721,8 @@ def rl_main(args):
 
 
             print(curr_state)
-            print(acc)
+            print("EPISODES ACC{}".format(acc))
+            # print(acc)
 
             # with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
             #     acc_file.write("{} {}\n".format(acc, class_accs))
