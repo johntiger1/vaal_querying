@@ -403,7 +403,7 @@ def learn(y,y_pred, reward, criterion, optim):
     loss = criterion( y_pred, y)
     loss = reward * loss
     loss *= -1
-
+    loss.sum()
     optim.zero_grad()
     loss.backward()
     optim.step()
@@ -433,7 +433,7 @@ def process_reward(reward_history):
 
     adv = discount_rewards(reward_history)
     processed_reward_history = adv
-    # processed_reward_history = (adv - adv.mean()) / (adv.std() + 1e-7)
+    processed_reward_history = (adv - adv.mean()) / (adv.std() + 1e-7)
     print(reward_history)
     print(processed_reward_history)
     return processed_reward_history
@@ -443,7 +443,7 @@ def rl_main(args):
     # a full game, where you pick 10 examples
     # args.mine_episodes = 10
 
-    args.episode_length = 1
+    args.episode_length = 10
     args.num_episodes = 10
 
     args.epsilon = 0.2 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
@@ -545,7 +545,7 @@ def rl_main(args):
     # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
 
     accuracies = []
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(reduction="none")
 
     # feel like supporting a desparate cause; might delete later
 
