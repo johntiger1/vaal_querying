@@ -4,6 +4,8 @@ Working on getting the environment assumptions oF RL working! In particular: we 
 Resetting:
 1. Unlabel all the datapoints, OR JUST DUMP THE TRAIN DATALOADER (OK!)
 
+Need to do LEARNABLE actions from FIRST principles: batching, environment reset, etc.
+
 # April 28
 Got the policy gradient (correct implementation working).
 
