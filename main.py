@@ -403,9 +403,9 @@ def learn(y,y_pred, reward, criterion, optim):
     loss = criterion( y_pred, y)
     loss = reward * loss
     loss *= -1
-    loss.sum()
+
     optim.zero_grad()
-    loss.backward()
+    loss.sum().backward()
     optim.step()
 
 
@@ -567,7 +567,7 @@ def rl_main(args):
     kmeans_obj = KMeans(n_clusters=args.num_classes, random_state=0)  # we can also fit one kmeans at the very start.
     cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
 
-    oracle_clusters = False
+    oracle_clusters = True
 
     if oracle_clusters:
         unlabelled_dataset = np.concatenate((X, labels), axis=1)
@@ -762,7 +762,9 @@ def rl_main(args):
             #     stack all of them!
             # and furthermore, we need to do a group by on the label.
 
+        #     TODO: reset the batched points, and then readd everything back in
 
+        # i.e.: we need to reset the state, and then do another 10-point learning
 
         # now, check the visual labelled dataset
 
