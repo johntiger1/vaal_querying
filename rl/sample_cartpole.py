@@ -25,9 +25,9 @@ class Network(nn.Module):
         # nn.init.xavier_uniform(self.l2.weight)
     def forward(self, x):
         x = F.relu(self.l1(x))
-        print(x.shape)
+        # print(x.shape)
         new_x = self.l2(x)
-        print(new_x.shape)
+        # print(new_x.shape)
         x = F.softmax(new_x)
         return x
 
@@ -48,8 +48,11 @@ def discount_rewards(r):
         running_add = running_add * GAMMA + r[t]
         discounted_r[t] = running_add
 
+    print(discounted_r)
     return discounted_r
-
+'''
+We run however many of these episodes, as necessary!
+'''
 def run_episode(net, e, env):
     state = env.reset()
     reward_sum = 0
@@ -62,7 +65,7 @@ def run_episode(net, e, env):
         # env.render()
 
         x = FloatTensor([state])
-        xs = torch.cat([xs, x])
+        xs = torch.cat([xs, x]) #queue: FIFO; append to end
 
         action_prob = net(Variable(x))
         action_predictions = torch.cat([action_predictions, action_prob])
@@ -96,6 +99,11 @@ def learn(x, y, adv, action_predictions):
     # Loss function, ∑ Ai*logp(yi∣xi), but we need fake lable Y due to autodiff
     # action_pred = model(Variable(x))
     # y = Variable(y, requires_grad=True)
+
+    print("y shape and AP shape")
+    print(y.shape)
+    print(action_predictions.shape)
+
     adv = Variable(adv).cuda()
     # print(action_pred)
     log_lik = -y * torch.log(action_predictions)
