@@ -213,12 +213,13 @@ args:
 
 def get_query_via_kmeans(action, unlabelled_data, args):
     # data is [features, label, idx, pseudo_label]
-    print("these are some action zero statistics")
-    print(action.probs)
-    print((action.probs<0).nonzero())
+    # print("these are some action zero statistics")
+    # print(action.probs)
+    # print((action.probs<0).nonzero())
 
     rand = False
     if torch.rand(size=()) < args.epsilon:
+        print("randomly chosen")
         rand = True
         rand_idx = torch.randint(len(unlabelled_data), size=())
         datapoint = (unlabelled_data[rand_idx, 0:2], unlabelled_data[rand_idx, 2], unlabelled_data[rand_idx, 3])
@@ -408,9 +409,13 @@ function which computes the REINFORCE paramter updates
 def learn(y,y_pred, reward, criterion, optim):
     '''assert the loss is indeed the CE loss'''
 
-    loss = criterion( y_pred, y)
+    loss = criterion( y_pred, y) #auto applies the log softmax, so it should be same!
+    print("og loss {}".format(loss))
     loss = reward * loss
     loss *= -1
+
+    print("reward_weighted  here:")
+    print(loss)
 
     optim.zero_grad()
     loss.sum().backward()
@@ -422,7 +427,7 @@ def discount_rewards(r):
     discounted_r = torch.zeros(r.size())
     running_add = 0
     for t in reversed(range(len(r))):
-        print("Step: {}".format(t))
+        # print("Step: {}".format(t))
         running_add = running_add * GAMMA + r[t]  # we slowly accumulate the reward into all of the steps along the way
         discounted_r[t] = running_add
     # therefore, this has the effect of adding the rewards back into the original actions..
@@ -452,9 +457,9 @@ def rl_main(args):
     # args.mine_episodes = 10
 
     args.episode_length = 10
-    args.num_episodes = 10
+    args.num_episodes = 100
 
-    args.epsilon = 0.2 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.5 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -619,7 +624,9 @@ def rl_main(args):
         action_history = torch.FloatTensor([])
         reward_history = torch.FloatTensor([])
         taken_action_history = torch.LongTensor([])
-        # current_indices = [] #reset the current indices
+        current_indices = [] #reset the current indices
+        prev_reward = torch.ones((ROLLING_AVG_LEN, 1))
+        prev_reward *= 20
         for j in range(args.episode_length):
             pol_optimizer.zero_grad()
 
@@ -688,7 +695,7 @@ def rl_main(args):
             acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
 
 
-            reward,prev_reward = compute_reward_clean_smoothed(curr_state,i*args.episode_length+j, prev_reward) #move the reward to the env. step.
+            reward,prev_reward = compute_reward_clean_smoothed(curr_state,i*0+j, prev_reward) #move the reward to the env. step.
             reward_history = torch.cat([reward_history, reward.unsqueeze(0)])
 
             accuracies.append(acc)
