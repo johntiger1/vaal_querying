@@ -796,6 +796,12 @@ def rl_main(args):
 
     # episdoe accuracies
     fig, ax = acc_plot(episode_accs, args, label="pg_reset", name="pg_episode_accs")
+
+    episodes_x = np.arange(0,10)
+    b, m = np.polynomial.polyfit(episodes_x, episode_accs, 1)
+
+
+    ax.plot(episodes_x, b+m*episodes_x, '-', label="regression")
     ax.legend()
     fig.show()
     fig.savefig(os.path.join(args.out_path, "pg_episode_accs"))
