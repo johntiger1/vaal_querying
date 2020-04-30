@@ -223,9 +223,10 @@ def get_query_via_kmeans(action, unlabelled_data, args):
         rand = True
         rand_idx = torch.randint(len(unlabelled_data), size=())
         datapoint = (unlabelled_data[rand_idx, 0:2], unlabelled_data[rand_idx, 2], unlabelled_data[rand_idx, 3])
-        unlabelled_data = np.delete(unlabelled_data, rand_idx, 0)  # test to make sure this works
 
         targ_cluster = torch.tensor(unlabelled_data[rand_idx][-1],dtype=torch.long).view(-1)
+        unlabelled_data = np.delete(unlabelled_data, rand_idx, 0)  # test to make sure this works
+
         return targ_cluster, datapoint, unlabelled_data,rand
 
     targ_cluster = action.sample()
@@ -462,7 +463,7 @@ def rl_main(args):
     args.episode_length = 10
     args.num_episodes = 10
 
-    args.epsilon = 0.5 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.8 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -583,7 +584,7 @@ def rl_main(args):
     kmeans_obj = KMeans(n_clusters=args.num_classes, random_state=0)  # we can also fit one kmeans at the very start.
     cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
 
-    oracle_clusters = True
+    oracle_clusters = False
 
     if oracle_clusters:
         unlabelled_dataset = np.concatenate((X, labels), axis=1)
@@ -605,7 +606,7 @@ def rl_main(args):
         ax.scatter(k_means_data  [:,0], k_means_data  [:,1])
         ax.scatter(kmeans_obj.cluster_centers_[cluster][0], kmeans_obj.cluster_centers_[cluster][1], s=100)
         fig.savefig(os.path.join(args.out_path, "cluster_{}".format(cluster)))
-        # break
+            # break
 
     fig.show()
 
@@ -796,11 +797,11 @@ def rl_main(args):
     import copy
     uncertain_args = copy.deepcopy(args)
     uncertain_args.sampling_method = "uncertainty"
-    uncertain_accs = random_baseline(uncertain_args, args.num_episodes)
+    uncertain_accs = random_baseline(uncertain_args, 100)
 
     random_args = copy.deepcopy(args)
     random_args.sampling_method = "random"
-    random_accs = random_baseline(random_args, args.num_episodes)
+    random_accs = random_baseline(random_args, 100)
 
     fig, ax =    acc_plot(accuracies, args, label="policy gradient")
     ax.plot(range(0, len(random_accs)), random_accs, marker="x", c="orange", label="random")
@@ -1429,7 +1430,7 @@ if __name__ == '__main__':
     else:
         args.device = torch.device('cpu')
 
-    args.gen_plots = False
+    args.gen_plots = True
     args.out_path = os.path.join(args.out_path, args.log_name)
     args.use_old = False
     if not os.path.exists(args.out_path):
@@ -1440,11 +1441,11 @@ if __name__ == '__main__':
         # this is a target for parallelization
         import torch
         root_dir = args.out_path
-        for i in range(0, 30):
+        for i in range(0, 10):
             rand_run = torch.randint(high=1000000, size=())
             # args.log_name = "kl_penalty_{}".format(i)
             args.torch_manual_seed = rand_run
-            subdir = "kl_penalty_{}".format(i)
+            subdir = "hack_{}".format(i)
 
             print("this is out path")
             print(args.out_path)
