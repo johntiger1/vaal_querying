@@ -41,7 +41,7 @@ class Solver:
 
 
     def read_data(self, dataloader, labels=True):
-        print(len(dataloader))
+        # print(len(dataloader))
         if labels:
             while True:
                 for img, label, _ in dataloader:
@@ -58,7 +58,8 @@ class Solver:
 
         labeled_data = self.read_data(querry_dataloader)
 
-
+        print("the length of the  labelled data is: {}".format(len(querry_dataloader)
+                                                               * querry_dataloader.batch_size))
         optim_task_model = optim.Adam(task_model.parameters(), lr=5e-3)
 
         task_model.train()
@@ -68,7 +69,7 @@ class Solver:
         
         change_lr_iter = self.args.train_iterations // 25
 
-        for iter_count in tqdm(range(self.args.train_iterations)):
+        for iter_count in (range(self.args.train_iterations)):
             if iter_count is not 0 and iter_count % change_lr_iter == 0:
     
                 for param in optim_task_model.param_groups:
@@ -81,8 +82,13 @@ class Solver:
                 labels = labels.cuda()
 
             # task_model step
+            # need to expand and de-expand the images
+            # labeled_imgs = np.repeat(labeled_imgs[...,np.newaxis,...],3, axis=1)
             preds = task_model(labeled_imgs)
             task_loss = self.ce_loss(preds, labels)
+
+            # task_loss = task_loss + torch.zeros((1)).log().cuda() #inf also works, interesting!
+
             optim_task_model.zero_grad()
             task_loss.backward()
             optim_task_model.step()
@@ -177,8 +183,8 @@ class Solver:
             task_loss.backward()
             optim_task_model.step()
 
-            if iter_count % 100 == 0:
-                print('Current task model loss: {:.4f}'.format(task_loss.item()))
+            # if iter_count % 100 == 0:
+                # print('Current task model loss: {:.4f}'.format(task_loss.item()))
 
         final_accuracy = self.test(task_model)
         return final_accuracy, vae, discriminator
