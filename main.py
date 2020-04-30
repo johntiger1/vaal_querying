@@ -379,6 +379,7 @@ def dataloader_statistics(train_dataloader, num_classes):
         for dp, lb, _ in zip(datapoint, label, idx):
             per_class[lb] += 1
 
+    print("in total, there are {} datapoints".format(torch.sum(per_class)))
     return per_class, torch.sum(per_class)
 
 '''
@@ -462,7 +463,7 @@ def rl_main(args):
 
     args.episode_length = 10
     args.num_episodes = 10
-
+    args.reset_env = True
     args.epsilon = 0.8 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
@@ -562,6 +563,7 @@ def rl_main(args):
     # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
 
     accuracies = []
+    episode_accs = []
     criterion = torch.nn.CrossEntropyLoss(reduction="none")
 
     # feel like supporting a desparate cause; might delete later
@@ -584,7 +586,7 @@ def rl_main(args):
     kmeans_obj = KMeans(n_clusters=args.num_classes, random_state=0)  # we can also fit one kmeans at the very start.
     cluster_preds = kmeans_obj.fit_predict(X[:,0:2])
 
-    oracle_clusters = False
+    oracle_clusters = True
 
     if oracle_clusters:
         unlabelled_dataset = np.concatenate((X, labels), axis=1)
@@ -629,9 +631,9 @@ def rl_main(args):
         reward_history = torch.FloatTensor([])
         taken_action_history = torch.LongTensor([])
 
-
-        # current_indices = [] #reset the current indices
-        if current_indices == []: #reset perf if we are also resetting current indices
+        if args.reset_env:
+            current_indices = [] #reset the current indices
+            #reset perf if we are also resetting current indices
             prev_reward = torch.ones((ROLLING_AVG_LEN, 1))
             prev_reward *= 20
 
@@ -718,6 +720,7 @@ def rl_main(args):
 
         # end of episode; compute the reward and go forth!
         if True:
+            episode_accs.append(acc)
             processed_reward_history = process_reward(reward_history)
             learn(taken_action_history, action_history , processed_reward_history, criterion, pol_optimizer)
 
@@ -791,17 +794,22 @@ def rl_main(args):
     fig.show()
     fig.savefig(os.path.join(args.out_path, "comparison_batched_acc_plot_{}_queries".format(len(accuracies))))
 
+    # episdoe accuracies
+    fig, ax = acc_plot(episode_accs, args, label="pg_reset", name="pg_episode_accs")
+    ax.legend()
+    fig.show()
+    fig.savefig(os.path.join(args.out_path, "pg_episode_accs"))
 
-    print(pol_class_net)
 
     import copy
     uncertain_args = copy.deepcopy(args)
     uncertain_args.sampling_method = "uncertainty"
-    uncertain_accs = random_baseline(uncertain_args, 100)
+    num_comparison_iters = args.episode_length if args.reset_env else 100
+    uncertain_accs = random_baseline(uncertain_args, num_comparison_iters)
 
     random_args = copy.deepcopy(args)
     random_args.sampling_method = "random"
-    random_accs = random_baseline(random_args, 100)
+    random_accs = random_baseline(random_args, num_comparison_iters)
 
     fig, ax =    acc_plot(accuracies, args, label="policy gradient")
     ax.plot(range(0, len(random_accs)), random_accs, marker="x", c="orange", label="random")
