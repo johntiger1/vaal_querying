@@ -69,8 +69,11 @@ def compute_reward_clean(curr_state):
 def compute_reward_clean_smoothed(curr_state, time_step, prev_reward):
     # should be affected by how many initial datapoints we give it.; initial performance of the model
     curr_state = curr_state[:,0:args.num_classes].detach() #the rward should give 5 signals!
-    curr_reward = torch.mean(curr_state) - torch.mean(prev_reward) -(20+time_step*2)
-    prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
+
+    curr_perf =  torch.mean(curr_state)
+    curr_reward = curr_perf - torch.mean(prev_reward) #-(20+time_step*2)
+    prev_reward = torch.cat([prev_reward, curr_perf.view((1,1))],dim=0)
+    # prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
 
 
     return curr_reward, prev_reward
@@ -233,9 +236,9 @@ def get_query_via_kmeans(action, unlabelled_data, args):
     targ_cluster = action.sample()
 
 
-    iters = 0
     datapoint = None
-    while iters < 100:
+
+    for i in range(100):
         rand_idx = torch.randint(len(unlabelled_data), size=())
 
         # we assume the kmeans is appended right at the very end
@@ -244,19 +247,13 @@ def get_query_via_kmeans(action, unlabelled_data, args):
             unlabelled_data = np.delete(unlabelled_data, rand_idx, 0 ) # test to make sure this works
             break
 
-        iters+=1
+    else: #just return any random datapoint
+        rand_idx = torch.randint(len(unlabelled_data), size=())
+        datapoint = (unlabelled_data[rand_idx, 0:2], unlabelled_data[rand_idx, 2], unlabelled_data[rand_idx, 3])
+        unlabelled_data = np.delete(unlabelled_data, rand_idx, 0)
+
 
     return targ_cluster, datapoint, unlabelled_data, rand
-    # now, we just keep track of the indices
-    # now, we just need to sample the class
-
-    datapoint = None
-    # from the unlabelled indices, sample an appropriate point from the class
-    iters = 0
-
-    lowest_score = 100
-    lowest_datapoint = None
-    # print(len(unlabelled_dataset))
 
 
 def random_baseline(args, num_iters=100):
@@ -463,7 +460,7 @@ def rl_main(args):
     # args.mine_episodes = 10
 
     args.episode_length = 10
-    args.num_episodes = 20
+    args.num_episodes = 500
     args.reset_env = True
     args.epsilon = 0.2 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
@@ -637,7 +634,7 @@ def rl_main(args):
             current_indices = list(initial_indices)
 
             #reset perf if we are also resetting current indices
-            prev_reward = torch.ones((ROLLING_AVG_LEN, 1))
+            prev_reward = torch.ones((1, 1))
             prev_reward *= 20
 
         for j in range(args.episode_length):
@@ -709,7 +706,7 @@ def rl_main(args):
 
             acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
 
-            if args.reset_env:
+            if False and args.reset_env:
                 reward = compute_reward_clean(curr_state)  # move the reward to the env. step.
 
             else:
@@ -717,6 +714,8 @@ def rl_main(args):
             reward_history = torch.cat([reward_history, reward.unsqueeze(0)])
 
             accuracies.append(acc)
+            with open(os.path.join(args.out_path, "perf.txt"), "a") as acc_file:
+                acc_file.write("{}\n".format(acc))
             print(prev_reward)
             print(action_dist.probs)
             print(F.softmax(action_vector))
