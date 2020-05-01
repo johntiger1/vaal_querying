@@ -33,7 +33,7 @@ Simulates a step of the environment. Returns the new state, and the next dynamic
 Returns a next state: 1x10 vector
 
 '''
-def environment_step(train_dataloader, solver, task_model, num_repeats=1):
+def environment_step(train_dataloader, solver, task_model, num_repeats=3):
 
     accs = torch.zeros((num_repeats,1))
     class_accs_across_runs = torch.zeros((num_repeats,5))
@@ -67,6 +67,7 @@ def compute_reward_clean(curr_state):
     return torch.mean(curr_state)
 
 def compute_reward_clean_smoothed(curr_state, time_step, prev_reward):
+    # should be affected by how many initial datapoints we give it.; initial performance of the model
     curr_state = curr_state[:,0:args.num_classes].detach() #the rward should give 5 signals!
     curr_reward = torch.mean(curr_state) - torch.mean(prev_reward) -(20+time_step*2)
     prev_reward[time_step%len(prev_reward)]  = torch.mean(curr_state)
@@ -462,9 +463,9 @@ def rl_main(args):
     # args.mine_episodes = 10
 
     args.episode_length = 10
-    args.num_episodes = 10
+    args.num_episodes = 20
     args.reset_env = True
-    args.epsilon = 0.8 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.2 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
@@ -488,7 +489,7 @@ def rl_main(args):
         print(len(train_dataset))
         args.num_images = 2500
         args.budget = 1 #how many we can label at each round
-        args.initial_budget = 1
+        args.initial_budget = 0
         args.num_classes = 5
 
     elif args.dataset == "mnist":
@@ -632,7 +633,9 @@ def rl_main(args):
         taken_action_history = torch.LongTensor([])
 
         if args.reset_env:
-            current_indices = [] #reset the current indices
+            # current_indices = [] #reset the current indices
+            current_indices = list(initial_indices)
+
             #reset perf if we are also resetting current indices
             prev_reward = torch.ones((ROLLING_AVG_LEN, 1))
             prev_reward *= 20
@@ -650,10 +653,10 @@ def rl_main(args):
             # make the network output a softmax
             # then, the loss is the cross entropy:
             # print(F.softmax(action_vector))
-            if (len(F.softmax(action_vector)[F.softmax(action_vector)<0]) > 0 ):
+            if (len(F.softmax(action_vector,dim=1)[F.softmax(action_vector,dim=1)<0]) > 0 ):
                 print("huh 0 probs!!")
 
-            action_probs = F.softmax(action_vector)
+            action_probs = F.softmax(action_vector, dim=1)
             action_dist = torch.distributions.Categorical(probs=action_probs) #the diff between Softmax and softmax
 
             action_history = torch.cat([action_history, action_vector])
@@ -706,8 +709,11 @@ def rl_main(args):
 
             acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
 
+            if args.reset_env:
+                reward = compute_reward_clean(curr_state)  # move the reward to the env. step.
 
-            reward,prev_reward = compute_reward_clean_smoothed(curr_state,i*0+j, prev_reward) #move the reward to the env. step.
+            else:
+                reward,prev_reward = compute_reward_clean_smoothed(curr_state,i*0+j, prev_reward) #move the reward to the env. step.
             reward_history = torch.cat([reward_history, reward.unsqueeze(0)])
 
             accuracies.append(acc)
@@ -729,7 +735,7 @@ def rl_main(args):
 
 
             print(curr_state)
-            print("EPISODES ACC{}".format(acc))
+            print("EPISODES {} ACC {}\n".format(i, acc))
             # print(acc)
 
             # with open(os.path.join(args.out_path, "rl_current_accs.txt"), "a") as acc_file:
@@ -794,11 +800,13 @@ def rl_main(args):
     fig.show()
     fig.savefig(os.path.join(args.out_path, "comparison_batched_acc_plot_{}_queries".format(len(accuracies))))
 
+    print("generating the episode accs:")
+    print("episodes:{}".format(len(episode_accs)))
     # episdoe accuracies
     fig, ax = acc_plot(episode_accs, args, label="pg_reset", name="pg_episode_accs")
 
-    episodes_x = np.arange(0,10)
-    b, m = np.polynomial.polyfit(episodes_x, episode_accs, 1)
+    episodes_x = np.arange(0,len(episode_accs))
+    b, m = np.polynomial.polynomial.polyfit(episodes_x, episode_accs, 1)
 
 
     ax.plot(episodes_x, b+m*episodes_x, '-', label="regression")
@@ -1444,7 +1452,7 @@ if __name__ == '__main__':
     else:
         args.device = torch.device('cpu')
 
-    args.gen_plots = True
+    args.gen_plots = False
     args.out_path = os.path.join(args.out_path, args.log_name)
     args.use_old = False
     if not os.path.exists(args.out_path):
