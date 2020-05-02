@@ -214,7 +214,10 @@ args:
     - what the actual indices are!.. yes we should be able to do kmeans on a numpy array. And then have the cluster appear as another feature 
     of data points that 
 '''
-
+'''
+Update: may 1: DON'T use the unlabelled data, since really, we should just be moving
+indices only around!
+'''
 def get_query_via_kmeans(action, unlabelled_data, args):
     # data is [features, label, idx, pseudo_label]
     # print("these are some action zero statistics")
@@ -460,7 +463,7 @@ def rl_main(args):
     # args.mine_episodes = 10
 
     args.episode_length = 10
-    args.num_episodes = 500
+    args.num_episodes = 100
     args.reset_env = True
     args.epsilon = 0.2 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
@@ -562,6 +565,8 @@ def rl_main(args):
 
     accuracies = []
     episode_accs = []
+    curr_episode_accs = []
+    all_accs = []
     criterion = torch.nn.CrossEntropyLoss(reduction="none")
 
     # feel like supporting a desparate cause; might delete later
@@ -618,7 +623,7 @@ def rl_main(args):
     # loss.backward(0 => doesn't actually execute an update of the weights. we could probably call loss.backward individually
 
     batched_accs = []
-
+    average_episode_accs = []
 
     # try combining it with the state. and also, just try doing an epsilon greedy policy
     import torch.nn.functional as F
@@ -628,7 +633,7 @@ def rl_main(args):
         action_history = torch.FloatTensor([])
         reward_history = torch.FloatTensor([])
         taken_action_history = torch.LongTensor([])
-
+        curr_episode_accs = []
         if args.reset_env:
             # current_indices = [] #reset the current indices
             current_indices = list(initial_indices)
@@ -705,14 +710,17 @@ def rl_main(args):
             # print(action)
 
             acc, curr_state = environment_step(train_dataloader, solver, task_model) #might need to write a bit coupled code. This is OK for now
+            all_accs.append(acc)
 
             if False and args.reset_env:
                 reward = compute_reward_clean(curr_state)  # move the reward to the env. step.
 
             else:
                 reward,prev_reward = compute_reward_clean_smoothed(curr_state,i*0+j, prev_reward) #move the reward to the env. step.
+
             reward_history = torch.cat([reward_history, reward.unsqueeze(0)])
 
+            curr_episode_accs.append(acc)
             accuracies.append(acc)
             with open(os.path.join(args.out_path, "perf.txt"), "a") as acc_file:
                 acc_file.write("{}\n".format(acc))
@@ -725,7 +733,10 @@ def rl_main(args):
 
         # end of episode; compute the reward and go forth!
         if True:
-            episode_accs.append(acc)
+
+            # episode_accs.append(acc)
+            # average_episode_accs.append(np.mean(curr_episode_accs))
+
             processed_reward_history = process_reward(reward_history)
             learn(taken_action_history, action_history , processed_reward_history, criterion, pol_optimizer)
 
@@ -786,29 +797,43 @@ def rl_main(args):
     model_params = pol_class_net.state_dict()
     torch.save(model_params, os.path.join(args.out_path, "model.pt"))
 
-
+    curr_episode_accs.append(acc)
 
     #
 
-    fig, ax = acc_plot(accuracies, args, label="policy gradient", name="policy gradient only")
+    fig, ax = acc_plot(all_accs, args, label="policy gradient", name="policy gradient only")
 
-    spaced_x = list(range(len(batched_accs)))
-    spaced_x = [x*10 for x in spaced_x]
-    ax.plot(spaced_x, batched_accs, marker="x", c="purple", label="batched policy updates")
-    ax.legend()
-    fig.show()
-    fig.savefig(os.path.join(args.out_path, "comparison_batched_acc_plot_{}_queries".format(len(accuracies))))
+    # spaced_x = list(range(len(batched_accs)))
+    # spaced_x = [x*10 for x in spaced_x]
+    # ax.plot(spaced_x, batched_accs, marker="x", c="purple", label="batched policy updates")
+    # ax.legend()
+    # fig.show()
+    # fig.savefig(os.path.join(args.out_path, "comparison_batched_acc_plot_{}_queries".format(len(accuracies))))
 
     print("generating the episode accs:")
+    print("total acts:{}".format(len(all_accs)))
+
+
+    episode_accs = np.array(all_accs).reshape((-1, args.episode_length))
     print("episodes:{}".format(len(episode_accs)))
+
+#   [all_accs[i] for i in range(0, len(all_accs)) if i % 10 == 0 ]
+    episode_final_accs = episode_accs[:,-1]
+    episode_avg_accs = episode_accs.mean(axis=1)
+
     # episdoe accuracies
-    fig, ax = acc_plot(episode_accs, args, label="pg_reset", name="pg_episode_accs")
+    fig, ax = acc_plot(all_accs, args, label="episode_accs", name="pg_episode_accs")
 
-    episodes_x = np.arange(0,len(episode_accs))
-    b, m = np.polynomial.polynomial.polyfit(episodes_x, episode_accs, 1)
+    episodes_x = np.arange(0,len(episode_accs))*args.episode_length
+    ax.plot(episodes_x, episode_final_accs, label="episode_final_accs" )
+    ax.plot(episodes_x, episode_avg_accs, label="episode_avg accs" )
+
+    b, m = np.polynomial.polynomial.polyfit(episodes_x, episode_final_accs, 1)
+    ax.plot(episodes_x, b+m*episodes_x, '-', label="final_regression")
+    b, m = np.polynomial.polynomial.polyfit(episodes_x, episode_avg_accs, 1)
+    ax.plot(episodes_x, b+m*episodes_x, '-', label="avg_regression")
 
 
-    ax.plot(episodes_x, b+m*episodes_x, '-', label="regression")
     ax.legend()
     fig.show()
     fig.savefig(os.path.join(args.out_path, "pg_episode_accs"))
