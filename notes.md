@@ -1,3 +1,32 @@
+# May 2
+In particular what is the influence of a single datapoint? Instead, we should establish graphs showing the 
+results of adding more datapoints, and the effect on training loss. 
+
+We need to better motivate the problem! 
+
+Also, this means we need to add like 10 datapoints at once.
+We can examine: # training data points vs loss, and # training data points vs accuracy.
+From a random sample, we expect to see: ...
+
+If even the random signal is too noisy, then it would not be great. But as our ORACLE shows, we CAN select the best datapoints to get the BEST acc! 
+
+What we want actually is more fundamental work into the decision boundary of a neural network; for instance, can another neural
+network predict this decision boundary?
+
+And, again with the influence functions as well. how does selecting a SINGLE point affect the predictions. , the training loss etc/
+
+
+# May 1
+The game needs to be better played. The actions it selects, need to be DIRECTLY correlated with the final effect it has.
+If all we can do is ask for a label, then this is not good enough. 
+Since, even if we evenly distribute the labels, it won't necessarily work. 
+That is, we should try the "perfect" first. 
+
+Instead, we should rethink the game it plays. For instance, let it just decide whether to label or not.
+This will follow work by other people!5fimstu            
+            
+            
+            
             # one other thing: doing a value network, or framing it as a regression problem
             # RL seems like the wrong formulation to do AL.
             
