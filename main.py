@@ -465,7 +465,7 @@ def rl_main(args):
     args.episode_length = 10
     args.num_episodes = 100
     args.reset_env = True
-    args.epsilon = 0.2 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
+    args.epsilon = 0.8 # try with full policy. and try with using the full vector to compute a reward. But it really is just a multiple. Unless we specifically penalize assigning 0 counts
 
     # probably starting with 10 or so points randomly would be very good. but would invalidate past work
 
