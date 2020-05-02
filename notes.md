@@ -1,5 +1,16 @@
 
 # May 2
+
+Reframe and re-pitch towards BATCH
+right now uncertainty is the home court, since it gets currently uncertain (up to the datapoint!)
+That is, we should ask the model for 10 datapoints! 
+
+The most logical extension is to make the output layer be 10* the # of output classes, then reshape. 
+
+First though,we NEED the visualization of probabilities over time.
+
+We have unbounded compute on the BACK end!
+
 In particular what is the influence of a single datapoint? Instead, we should establish graphs showing the 
 results of adding more datapoints, and the effect on training loss. 
 
