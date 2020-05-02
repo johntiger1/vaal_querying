@@ -634,6 +634,15 @@ def rl_main(args):
         reward_history = torch.FloatTensor([])
         taken_action_history = torch.LongTensor([])
         curr_episode_accs = []
+
+        # we also need to reset the unlabelled dataset here
+        if oracle_clusters:
+            unlabelled_dataset = np.concatenate((X, labels), axis=1)
+
+        else:
+            # we can also just predict (should be fast) again on new datapoints, using the trained classifier. But why not just memorize
+            unlabelled_dataset = np.concatenate((X, np.expand_dims(cluster_preds, axis=1)), axis=1)
+
         if args.reset_env:
             # current_indices = [] #reset the current indices
             current_indices = list(initial_indices)
