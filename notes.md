@@ -1,3 +1,4 @@
+
 # May 2
 In particular what is the influence of a single datapoint? Instead, we should establish graphs showing the 
 results of adding more datapoints, and the effect on training loss. 
@@ -28,6 +29,34 @@ This will follow work by other people!5fimstu
             
             
             # one other thing: doing a value network, or framing it as a regression problem
+
+# April 29
+Working on getting the environment assumptions oF RL working! In particular: we need to RESET the environment to some original baseline EACH TIME! 
+
+Resetting:
+1. Unlabel all the datapoints, OR JUST DUMP THE TRAIN DATALOADER (OK!)
+2. Won't work exactly: since we DO implicitly have some state tracking over time...
+
+Even just defining the problem for this question is challenging! Amazing!
+
+
+Need to do LEARNABLE actions from FIRST principles: batching, environment reset, etc.
+(Lmao curriculum learning myself; joint human curriculum learning in RL curriculum learning!)
+
+Also:
+we mainly figure out how important the RL reward function is. (ensuring 0 centered in particular).
+Also:
+## RELEARNING ON SAMPLED DATA
+**THE BIG BET**: we will need some sort of experience replay. SOmething like a "standard" environment of 50 candidates to evaluate, and train on, and prep, and then hoping it will generalize as we see more data!
+
+Stagewise RL; as we get more samples, we get exponentially more sequences. Lots of nice FUNDAMENTAL ways to motivate this problem!
+
+# April 28
+Got the policy gradient (correct implementation working).
+
+
+    # one other thing: doing a value network, or framing it as a regression problem
+
             # RL seems like the wrong formulation to do AL.
             
             
