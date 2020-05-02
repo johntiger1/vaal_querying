@@ -522,7 +522,7 @@ def rl_main(args):
     unlabeled_dataloader = data.DataLoader(train_dataset,
                                            sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
-    # dataset with labels available
+    # dataset with labels available. The sampler specifies which indices we sample
     train_dataloader = data.DataLoader(train_dataset, sampler=sampler,
                                        batch_size=args.batch_size, drop_last=False)
 
@@ -645,16 +645,9 @@ def rl_main(args):
         for j in range(args.episode_length):
             pol_optimizer.zero_grad()
 
-            # here we need a fake label, in order to back prop the loss. And don't backprop immediately, instead, get the gradient,
-            # hold it, wait for the reward, and then backprop on that quantity
-            action_vector = pol_class_net (curr_state )
-            # torch.nn.functional.log_softmax(action_vector)
-            # action_dist = torch.zeros((1))
 
-            # the huge bug is as follows:
-            # make the network output a softmax
-            # then, the loss is the cross entropy:
-            # print(F.softmax(action_vector))
+            action_vector = pol_class_net (curr_state )
+
             if (len(F.softmax(action_vector,dim=1)[F.softmax(action_vector,dim=1)<0]) > 0 ):
                 print("huh 0 probs!!")
 
@@ -663,19 +656,7 @@ def rl_main(args):
 
             action_history = torch.cat([action_history, action_vector])
 
-            # we probably need logsoftmax here too
-            # print("action dist{}\n, dist probs{}\n, "
-            #       "self f.softmax {}\n, self.log softmax{}\n".format(action_vector,
-            #                                                          action_dist.probs,
-            #                                                          F.softmax(action_vector, dim=1),
-            #                                                                                       F.log_softmax(action_vector,
-            #                                                                                                 dim=1))) #intelligent to take the softmax over the right dimension
-            # print() #recall logsoftmax and such
 
-            # if torch.rand() < args.epsilon:
-            #     pass
-            # else:
-            # correct_label1, action1 = get_query(action_dist, unlabeled_dataloader, inference_model, args)
             correct_label, action, unlabelled_dataset, rand = get_query_via_kmeans(action_dist, unlabelled_dataset, args)
 
 
