@@ -1,3 +1,5 @@
+# May 3
+Our goal is to simply show that when we can pick a batch of examples, then the uncertainty estimator is not as good. (random will be mostly unaffected)
 
 # May 2
 
