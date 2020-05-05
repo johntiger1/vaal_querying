@@ -62,7 +62,13 @@ scaling up, may solve some issues:
 Therefore, we propose the following:
 1. batch size with 10 samples. That is, we will still have 10 steps. But each of these 10 steps involves sampling 10 points! 
 
-If we force all of them to be the same then... => the gradient updates can be the same (it is just like an amplified signal)
+If we force all of them to be the same then... => the gradient updates can be the same (it is just like an amplified signal). One drawback to this approach is the following: we will suffer from the same batch correlation problem. However, the goal is to show faster and better learning when we have more impact. 
+
+In particular, it is expected that we will learn to not policy collapse, even without any explicit penalties or regularization. 
+
+Later on, we can address the batch problem
+
+
 If we let them differ, then... => (we need to think about how the loss will change)
 
 2. nice visualization
