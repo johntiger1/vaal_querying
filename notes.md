@@ -1,3 +1,14 @@
+# May 5
+After running a huge search/experiment, come back with mostly null results. This is not necessarily good or bad, but could likely mean 
+too much training of the policy NN
+
+too much noise. (noise set to 0.81)
+
+We did notice that it was able to avoid collapse, thankfully.
+
+Either way, no big deal. We can still try the large batch sampling, and see what happens. But time is a limited resource these days...
+
+
 # May 4
 The goal right now is the following.
 1. we have shown that *some* learning may occur.
