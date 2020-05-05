@@ -1,3 +1,16 @@
+# May 4
+The goal right now is the following.
+1. we have shown that *some* learning may occur.
+2. we have also shown that batching is unaddressed by uncertainty.
+
+Therefore, we foresee a use case for the RL if we can produce K outputs, and then we reshape. We can do both a sequential, as well as a batch version. 
+
+That is: in one approach, we produce N\*K outputs, and then reshape, and train. In the other one, we simply retrain sequentially, stepping the network each time...
+
+Less principled, but...
+
+We will *specifically* show that our RL network solves the batched problem, and ONLY the batched problem
+
 # May 3
 Our goal is to simply show that when we can pick a batch of examples, then the uncertainty estimator is not as good. (random will be mostly unaffected)
 
