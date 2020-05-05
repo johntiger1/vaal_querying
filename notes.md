@@ -11,6 +11,8 @@ Less principled, but...
 
 We will *specifically* show that our RL network solves the batched problem, and ONLY the batched problem
 
+Interesting, we can simply sample N times, *from* the parameters that our NN outputs! This can work!
+
 # May 3
 Our goal is to simply show that when we can pick a batch of examples, then the uncertainty estimator is not as good. (random will be mostly unaffected)
 
