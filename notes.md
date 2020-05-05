@@ -13,6 +13,60 @@ We will *specifically* show that our RL network solves the batched problem, and 
 
 Interesting, we can simply sample N times, *from* the parameters that our NN outputs! This can work!
 
+However, this probably won't work. The reason is that, it will just learn to concentrate all the probs on one area, again! 
+If instead, we have it *predicting the context*, then we will probably have concentration again. 
+
+Overall, the state representation and such is too challenging for this problem. 
+
+We have never been able to solve the concetration problem yet.
+
+OK, so I want action concentration then: 
+
+
+Ultimately, these are the **strong** assumptions we make. 
+1. we assume that we know the prior distribution of the testing set (not too bad)
+2. we assume that there is some signficant correlation between k-means clustering and real labels. If this is not the case, then, we can also use a noisy labeller. 
+
+Under these two assumptions, therefore, we would like to show that RL is useful
+and particularly, that RL can be improved from a naive by using the prior penalty.
+
+So naturally, the idea is to a) show that RL can be useful over time (done). 2) show that on average, giving a roughly average distribution of points is more useful than not. 
+
+This assumes that our data distribution decision boundary is roughly even, which it is not. 
+
+What about: support points identified as support vectors by the SVM?? (even though this is more work, it will probably be better)
+
+I know! Hacking into the Kmeans, and essentially finding the boundary points! The uncertainty points *for* the kmeans. Instead, we could do a nice visualization of what uncertainty sampling actually does. 
+
+Instead, let us do the following:
+1. Graph the decision distribution each time.
+2. See if it learns something reasonable.
+3. Instead, let the RL paint a picture of itself, and this will evolve over time.
+
+Therefore, we will graph the decision distribution, and see the fixed convergence point. 
+
+The major drawbacks I see to this work are the following:
+1. weak correlation between action and outcome
+2. WAY too much randomness!
+3. 
+
+metric learning/nlp for text is better!
+
+so, let it die. 
+
+scaling up, may solve some issues:
+1. kmeans may work better in higher dimensions 
+2. bigger batch size means it observes bigger impacts of its actions
+3. 
+
+Therefore, we propose the following:
+1. batch size with 10 samples. That is, we will still have 10 steps. But each of these 10 steps involves sampling 10 points! 
+
+If we force all of them to be the same then... => the gradient updates can be the same (it is just like an amplified signal)
+If we let them differ, then... => (we need to think about how the loss will change)
+
+2. nice visualization
+
 # May 3
 Our goal is to simply show that when we can pick a batch of examples, then the uncertainty estimator is not as good. (random will be mostly unaffected)
 
